@@ -37,8 +37,11 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
     private var inputPipe: Pipe?
     private var outputPipe: Pipe?
     private var outputBuffer = Data()
-    private var onStart: ((Bool, String) -> Void)?
+    private var onStart: (@Sendable (Bool, String) -> Void)?
     private var pendingResponses: [String: ([String: Any]) -> Void] = [:]
+    private let stderrLock = NSLock()
+    private var launchStderr = ""
+    private var didFinishLaunch = false
     var onEvent: ((PiStreamEvent) -> Void)?
     var onError: ((String) -> Void)?
     var onUIRequest: ((PiUIRequest) -> Void)?
@@ -47,10 +50,28 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         PiLaunchConfiguration.modelLabel(for: workingDirectory)
     }
 
-    func start(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping (Bool, String) -> Void) {
+    func start(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping @Sendable (Bool, String) -> Void) {
         guard process == nil else {
             completion(true, "already running")
             return
+        }
+
+        guard let executable = PiLaunchConfiguration.resolvedExecutable() else {
+            completion(false, PiLaunchConfiguration.missingMessage)
+            return
+        }
+
+        let cwd = workingDirectory
+        if !FileManager.default.fileExists(atPath: cwd) {
+            do {
+                try FileManager.default.createDirectory(
+                    at: URL(fileURLWithPath: cwd),
+                    withIntermediateDirectories: true
+                )
+            } catch {
+                completion(false, "Working directory does not exist: \(cwd)")
+                return
+            }
         }
 
         let process = Process()
@@ -58,9 +79,10 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         let output = Pipe()
         let error = Pipe()
 
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = PiLaunchConfiguration.arguments(projectTrusted: projectTrusted)
-        process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
+        process.currentDirectoryURL = URL(fileURLWithPath: cwd)
+        process.environment = PiLaunchConfiguration.processEnvironment()
         process.standardInput = input
         process.standardOutput = output
         process.standardError = error
@@ -68,7 +90,32 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         self.process = process
         self.inputPipe = input
         self.outputPipe = output
-        self.onStart = completion
+
+        stderrLock.lock()
+        launchStderr = ""
+        didFinishLaunch = false
+        stderrLock.unlock()
+
+        let complete: @Sendable (Bool, String) -> Void = { [weak self] success, message in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.stderrLock.lock()
+                let alreadyFinished = self.didFinishLaunch
+                if !alreadyFinished {
+                    self.didFinishLaunch = true
+                }
+                self.stderrLock.unlock()
+                guard !alreadyFinished else { return }
+                self.onStart = nil
+                if !success {
+                    self.process = nil
+                    self.inputPipe = nil
+                    self.outputPipe = nil
+                }
+                completion(success, message)
+            }
+        }
+        self.onStart = complete
 
         output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -76,27 +123,43 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
             self?.consume(data)
         }
 
-        error.fileHandleForReading.readabilityHandler = { handle in
-            _ = handle.availableData
+        error.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
+            self?.stderrLock.lock()
+            self?.launchStderr += text
+            self?.stderrLock.unlock()
         }
 
         process.terminationHandler = { [weak self] process in
-            guard self?.process === process else { return }
-            self?.process = nil
-            self?.inputPipe = nil
-            self?.outputPipe = nil
-            if process.terminationStatus != 0 {
-                self?.onStart?(false, "Pi exited with status \(process.terminationStatus)")
-            }
+            guard let self, self.process === process else { return }
+            self.process = nil
+            self.inputPipe = nil
+            self.outputPipe = nil
+            self.stderrLock.lock()
+            let snippet = self.launchStderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.stderrLock.unlock()
+            complete(false, snippet.isEmpty ? "Pi exited with status \(process.terminationStatus)" : snippet)
         }
 
         do {
             try process.run()
-            send(command: ["type": "get_state"])
-            completion(true, "connected")
+            request(type: "get_state") { response in
+                if Self.responseSucceeded(response) {
+                    complete(true, "connected")
+                } else {
+                    complete(false, response["error"] as? String ?? "Pi RPC did not respond")
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                self?.stderrLock.lock()
+                let snippet = self?.launchStderr.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                self?.stderrLock.unlock()
+                complete(false, snippet.isEmpty ? "Pi did not respond" : snippet)
+            }
         } catch {
             self.process = nil
-            completion(false, error.localizedDescription)
+            complete(false, error.localizedDescription)
         }
     }
 
@@ -421,11 +484,78 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
     }
 }
 
-private enum PiLaunchConfiguration {
+enum PiLaunchConfiguration {
+    static let missingMessage = "Pi CLI not found. Install with: npm install -g --ignore-scripts @earendil-works/pi-coding-agent"
+
     static func arguments(projectTrusted: Bool) -> [String] {
         // The cwd is supplied to Process by PiRPCClient. Keep provider/model
         // selection in Pi settings so project overrides remain effective.
-        ["pi", "--mode", "rpc", projectTrusted ? "--approve" : "--no-approve"]
+        ["--mode", "rpc", projectTrusted ? "--approve" : "--no-approve"]
+    }
+
+    static func resolvedExecutable() -> String? {
+        var seen = Set<String>()
+        var candidates: [String] = []
+        if let fromShell = whichFromLoginShell("pi") {
+            candidates.append(fromShell)
+        }
+        for directory in augmentedPathDirectories() {
+            candidates.append((directory as NSString).appendingPathComponent("pi"))
+        }
+        for candidate in candidates {
+            let path = URL(fileURLWithPath: candidate).standardizedFileURL.path
+            guard seen.insert(path).inserted else { continue }
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+        return nil
+    }
+
+    static func processEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = augmentedPathDirectories().joined(separator: ":")
+        return environment
+    }
+
+    private static func augmentedPathDirectories() -> [String] {
+        var directories: [String] = []
+        if let node = whichFromLoginShell("node") {
+            directories.append((node as NSString).deletingLastPathComponent)
+        }
+        directories.append(contentsOf: [
+            NSHomeDirectory() + "/.local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin"
+        ])
+        let inherited = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        directories.append(contentsOf: inherited.split(separator: ":").map(String.init))
+        var seen = Set<String>()
+        return directories.filter { seen.insert($0).inserted }
+    }
+
+    private static func whichFromLoginShell(_ command: String) -> String? {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-lic", "command -v \(command)"]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard process.terminationStatus == 0,
+              let text, !text.isEmpty,
+              FileManager.default.isExecutableFile(atPath: text) else {
+            return nil
+        }
+        return text
     }
 
     static func modelLabel(for workingDirectory: String) -> String? {

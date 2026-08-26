@@ -289,12 +289,24 @@ enum DeepSeekUsageClient {
         }
 
         let decoded = try JSONDecoder().decode(DeepSeekBalanceResponse.self, from: data)
-        let values = decoded.balanceInfos.map { info in
-            "\(info.currency) \(info.totalBalance)"
+        guard let first = decoded.balanceInfos.first else {
+            return DeepSeekBalance(
+                headline: decoded.isAvailable ? "Balance available" : "Insufficient balance",
+                detail: "No balance rows returned"
+            )
         }
-        let headline = decoded.isAvailable ? "Balance available" : "Insufficient balance"
-        let detail = values.isEmpty ? "No balance rows returned" : values.joined(separator: "  ·  ")
-        return DeepSeekBalance(headline: headline, detail: detail)
+        let symbol: String
+        switch first.currency.uppercased() {
+        case "CNY", "RMB": symbol = "¥"
+        case "USD": symbol = "$"
+        default: symbol = ""
+        }
+        let headline = symbol.isEmpty ? first.totalBalance : "\(symbol)\(first.totalBalance)"
+        let availability = decoded.isAvailable ? "key configured · auth.json" : "Insufficient balance"
+        return DeepSeekBalance(
+            headline: headline,
+            detail: "\(first.currency) · \(availability)"
+        )
     }
 }
 
