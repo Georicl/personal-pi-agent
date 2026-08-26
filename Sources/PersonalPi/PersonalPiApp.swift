@@ -9,8 +9,9 @@ struct PersonalPiApp: App {
             RootView()
                 .environmentObject(appState)
                 .preferredColorScheme(.light)
+                .frame(minWidth: 1080, minHeight: 680)
         }
-        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1240, height: 800)
     }
 }

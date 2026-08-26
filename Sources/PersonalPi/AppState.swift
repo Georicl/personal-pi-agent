@@ -23,11 +23,11 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .overview: "square.grid.2x2.fill"
-        case .sessions: "bubble.left.and.bubble.right.fill"
-        case .knowledge: "books.vertical.fill"
-        case .projects: "folder.fill"
-        case .tasks: "checklist"
+        case .overview: "diamond"
+        case .sessions: "square.on.square"
+        case .knowledge: "line.3.horizontal"
+        case .projects: "tablecells"
+        case .tasks: "diamond.inset.filled"
         }
     }
 }
@@ -62,6 +62,14 @@ struct PiActivity: Identifiable, Sendable {
     var toolName: String
     var detail: String
     var state: PiActivityState
+    var startedAt: Date = Date()
+    var endedAt: Date?
+
+    var durationLabel: String? {
+        guard state != .running else { return nil }
+        let end = endedAt ?? Date()
+        return PiFormat.duration(end.timeIntervalSince(startedAt))
+    }
 }
 
 struct PiSavedSession: Identifiable, Sendable, Hashable {
@@ -83,6 +91,10 @@ struct PiSavedSession: Identifiable, Sendable, Hashable {
 
     var locationLabel: String {
         cwd.isEmpty ? "Project path unavailable" : cwd
+    }
+
+    var clockLabel: String {
+        PiFormat.sessionClock(timestamp)
     }
 }
 
@@ -119,18 +131,31 @@ enum PiConnectionState {
 
     var label: String {
         switch self {
-        case .ready: "Pi CLI ready"
-        case .connecting: "Connecting"
-        case .connected: "Pi connected"
-        case .unavailable: "Pi unavailable"
+        case .ready:
+            return "Pi CLI ready"
+        case .connecting:
+            return "Connecting"
+        case .connected:
+            return "Pi connected"
+        case .unavailable(let message):
+            if message.localizedCaseInsensitiveContains("not found")
+                || message.localizedCaseInsensitiveContains("not installed") {
+                return "Pi CLI missing"
+            }
+            return "Pi unavailable"
         }
+    }
+
+    var detail: String? {
+        if case .unavailable(let message) = self { return message }
+        return nil
     }
 
     var color: Color {
         switch self {
-        case .ready, .connected: .green
-        case .connecting: .orange
-        case .unavailable: .red
+        case .ready, .connected: Theme.positive
+        case .connecting: Theme.warning
+        case .unavailable: Theme.danger
         }
     }
 }
@@ -140,8 +165,8 @@ final class AppState: ObservableObject {
     @Published var selectedSection: AppSection = .overview
     @Published var workspaceScope: PiWorkspaceScope = .workspace
     @Published var connectionState: PiConnectionState = .ready
-    @Published var currentProject = "pi-dev"
-    @Published var currentProjectPath = "/Users/georicl/Documents/pi-dev"
+    @Published var currentProject = ""
+    @Published var currentProjectPath = ""
     @Published var composerText = ""
     @Published var isPiRunning = false
     @Published private(set) var messages: [PiChatMessage] = []
@@ -177,22 +202,28 @@ final class AppState: ObservableObject {
         let piRoot = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".pi", isDirectory: true)
         globalChatDirectory = piRoot.appendingPathComponent("chat", isDirectory: true).path
         globalKnowledgeDirectory = piRoot.appendingPathComponent("knowledge", isDirectory: true).path
-        let defaultPath = "/Users/georicl/Documents/pi-dev"
-        var registeredPaths = [defaultPath]
-        for path in UserDefaults.standard.stringArray(forKey: "personalPi.workspacePaths") ?? [] {
-            if !registeredPaths.contains(path) {
-                registeredPaths.append(path)
-            }
-        }
-        let initialWorkspaces = registeredPaths.map { PiWorkspaceInspector.placeholder(path: $0) }
-        let initialWorkspace = initialWorkspaces.first ?? PiWorkspaceInspector.placeholder(path: defaultPath)
-        workspace = initialWorkspace
-        workspaces = initialWorkspaces
-        currentProject = initialWorkspace.name
-        currentProjectPath = initialWorkspace.path
         Self.ensureDirectory(at: globalChatDirectory)
         Self.ensureDirectory(at: globalKnowledgeDirectory)
-        Self.ensureDirectory(at: projectKnowledgeDirectory(for: initialWorkspace.path))
+
+        let registeredPaths = Self.discoverWorkspacePaths()
+        if registeredPaths.isEmpty {
+            workspaceScope = .global
+            workspace = PiWorkspaceInspector.placeholder(path: globalChatDirectory)
+            workspaces = []
+            currentProject = "Global Chat"
+            currentProjectPath = globalChatDirectory
+        } else {
+            let initialWorkspaces = registeredPaths.map { PiWorkspaceInspector.placeholder(path: $0) }
+            workspace = initialWorkspaces[0]
+            workspaces = initialWorkspaces
+            currentProject = workspace.name
+            currentProjectPath = workspace.path
+            Self.ensureDirectory(at: projectKnowledgeDirectory(for: workspace.path))
+        }
+
+        if PiLaunchConfiguration.resolvedExecutable() == nil {
+            connectionState = .unavailable(PiLaunchConfiguration.missingMessage)
+        }
     }
 
     func connectPi() {
@@ -521,6 +552,48 @@ final class AppState: ObservableObject {
         workspaceScope == .workspace ? workspace.path : globalChatDirectory
     }
 
+    var shortenedScopePath: String {
+        PiFormat.path(scopePathLabel)
+    }
+
+    var isAgentBusy: Bool {
+        isGenerating || activities.contains { $0.state == .running }
+    }
+
+    var agentStatusCaption: String {
+        if let running = activities.last(where: { $0.state == .running }) {
+            return "running tool · \(running.toolName)"
+        }
+        let status = agentStatus.replacingOccurrences(of: "…", with: "").trimmingCharacters(in: .whitespaces)
+        switch status {
+        case "Ready", "Stopped", "Compacted", "Pi CLI ready":
+            return "agent idle"
+        case "Thinking":
+            return "thinking"
+        case "Writing":
+            return "writing"
+        case "Connecting to Pi":
+            return "connecting"
+        default:
+            return status.lowercased()
+        }
+    }
+
+    func openTask(_ task: PiTaskRecord) {
+        taskStore.markViewed(task)
+        guard let key = task.sessionKey, !key.hasPrefix("pending:") else {
+            selectedSection = .sessions
+            return
+        }
+        if let session = savedSessions.first(where: { $0.id == key }) {
+            sessionProjectFilter = session.cwd
+            switchSession(session)
+            selectedSection = .sessions
+        } else {
+            selectedSection = .sessions
+        }
+    }
+
     func selectWorkspace(_ selectedWorkspace: PiWorkspace) {
         guard workspaceScope != .workspace || workspace.path != selectedWorkspace.path else { return }
         workspaceScope = .workspace
@@ -665,6 +738,28 @@ final class AppState: ObservableObject {
             .path
     }
 
+    private static func discoverWorkspacePaths() -> [String] {
+        var paths: [String] = []
+        let fileManager = FileManager.default
+        func appendIfExists(_ raw: String) {
+            let path = URL(fileURLWithPath: raw).standardizedFileURL.path
+            guard fileManager.fileExists(atPath: path), !paths.contains(path) else { return }
+            paths.append(path)
+        }
+
+        for saved in UserDefaults.standard.stringArray(forKey: "personalPi.workspacePaths") ?? [] {
+            appendIfExists(saved)
+        }
+
+        let homeProject = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("personal-pi-agent", isDirectory: true)
+            .path
+        if fileManager.fileExists(atPath: (homeProject as NSString).appendingPathComponent("Package.swift")) {
+            appendIfExists(homeProject)
+        }
+        return paths
+    }
+
     private static func ensureDirectory(at path: String) {
         try? FileManager.default.createDirectory(
             at: URL(fileURLWithPath: path),
@@ -766,8 +861,20 @@ final class AppState: ObservableObject {
             activities[index].toolName = toolName
             activities[index].detail = detail
             activities[index].state = state
+            if state != .running {
+                activities[index].endedAt = activities[index].endedAt ?? Date()
+            }
         } else {
-            activities.append(PiActivity(id: id, toolName: toolName, detail: detail, state: state))
+            activities.append(
+                PiActivity(
+                    id: id,
+                    toolName: toolName,
+                    detail: detail,
+                    state: state,
+                    startedAt: Date(),
+                    endedAt: state == .running ? nil : Date()
+                )
+            )
         }
     }
 }
