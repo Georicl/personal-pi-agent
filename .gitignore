@@ -1,0 +1,13 @@
+node_modules/
+.build/
+Build/
+.swiftpm/
+xcuserdata/
+.env
+.env.*
+!.env.example
+.pi/
+dist/
+build/
+.DS_Store
+*.log
