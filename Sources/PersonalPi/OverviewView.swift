@@ -207,15 +207,14 @@ struct AccountUsageRow: View {
             ForEach(appState.usageStore.accounts) { account in
                 if account.id == "openai-codex" {
                     CodexUsageCard(account: account)
-                        .frame(maxWidth: .infinity)
-                        .layoutPriority(1)
+                        .frame(minWidth: 220, maxWidth: .infinity)
                 } else {
                     ProviderUsageCard(account: account)
-                        .frame(maxWidth: .infinity)
+                        .frame(minWidth: 220, maxWidth: .infinity)
                 }
             }
             SessionUsageCard(usageStore: appState.usageStore)
-                .frame(maxWidth: .infinity)
+                .frame(minWidth: 220, maxWidth: .infinity)
         }
     }
 }

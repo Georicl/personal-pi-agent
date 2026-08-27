@@ -195,11 +195,13 @@ final class AppState: ObservableObject {
     let piClient = PiRPCClient()
     let usageStore = AccountUsageStore()
     let taskStore = PiTaskStore()
+    let piRootDirectory: String
     let globalChatDirectory: String
     let globalKnowledgeDirectory: String
 
     init() {
         let piRoot = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".pi", isDirectory: true)
+        piRootDirectory = piRoot.path
         globalChatDirectory = piRoot.appendingPathComponent("chat", isDirectory: true).path
         globalKnowledgeDirectory = piRoot.appendingPathComponent("knowledge", isDirectory: true).path
         Self.ensureDirectory(at: globalChatDirectory)
@@ -218,7 +220,6 @@ final class AppState: ObservableObject {
             workspaces = initialWorkspaces
             currentProject = workspace.name
             currentProjectPath = workspace.path
-            Self.ensureDirectory(at: projectKnowledgeDirectory(for: workspace.path))
         }
 
         if PiLaunchConfiguration.resolvedExecutable() == nil {
@@ -249,6 +250,21 @@ final class AppState: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.isGenerating = false
+                self.agentStatus = message
+                self.taskStore.update(
+                    id: self.activeTaskId,
+                    state: .finished,
+                    detail: message,
+                    unread: true
+                )
+            }
+        }
+        piClient.onTermination = { [weak self] message in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isPiRunning = false
+                self.isGenerating = false
+                self.connectionState = .unavailable(message)
                 self.agentStatus = message
                 self.taskStore.update(
                     id: self.activeTaskId,
@@ -506,12 +522,20 @@ final class AppState: ObservableObject {
         }
         isRefreshingCatalog = true
         let workspacePaths = workspaces.map(\.path)
+        let sessionRoot = URL(fileURLWithPath: piRootDirectory)
+            .appendingPathComponent("agent/sessions", isDirectory: true)
+        let globalRoot = globalChatDirectory
 
         Task {
             let snapshot = await Task.detached(priority: .utility) {
-                let sessions = PiSessionCatalog.allSessions()
+                let sessions = PiSessionCatalog.allSessions(at: sessionRoot)
                 let groups = PiSessionCatalog.projectGroups(from: sessions)
-                let inspected = workspacePaths.map {
+                let discoveredPaths = Self.discoveredWorkspacePaths(
+                    registeredPaths: workspacePaths,
+                    sessions: sessions,
+                    excluding: globalRoot
+                )
+                let inspected = discoveredPaths.map {
                     PiWorkspaceInspector.inspect(path: $0, sessions: sessions)
                 }
                 return PiCatalogSnapshot(sessions: sessions, groups: groups, workspaces: inspected)
@@ -600,7 +624,6 @@ final class AppState: ObservableObject {
         workspace = selectedWorkspace
         currentProject = workspace.name
         currentProjectPath = workspace.path
-        Self.ensureDirectory(at: projectKnowledgeDirectory(for: workspace.path))
         sessionProjectFilter = nil
         restartPiForScope()
         refreshSavedSessions()
@@ -751,12 +774,35 @@ final class AppState: ObservableObject {
             appendIfExists(saved)
         }
 
-        let homeProject = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("personal-pi-agent", isDirectory: true)
-            .path
-        if fileManager.fileExists(atPath: (homeProject as NSString).appendingPathComponent("Package.swift")) {
-            appendIfExists(homeProject)
+        return paths
+    }
+
+    nonisolated private static func discoveredWorkspacePaths(
+        registeredPaths: [String],
+        sessions: [PiSavedSession],
+        excluding globalChatDirectory: String
+    ) -> [String] {
+        let fileManager = FileManager.default
+        var paths: [String] = []
+
+        func appendProject(_ rawPath: String) {
+            guard !rawPath.isEmpty else { return }
+            let path = URL(fileURLWithPath: rawPath).standardizedFileURL.path
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  !PiWorkspaceInspector.isInside(path, root: globalChatDirectory),
+                  !paths.contains(path) else { return }
+
+            // Explicitly registered roots own nested session directories. A
+            // session cwd becomes a project only when no existing project
+            // already contains it.
+            guard !paths.contains(where: { PiWorkspaceInspector.isInside(path, root: $0) }) else { return }
+            paths.append(path)
         }
+
+        registeredPaths.forEach(appendProject)
+        sessions.forEach { appendProject($0.cwd) }
         return paths
     }
 
@@ -880,9 +926,7 @@ final class AppState: ObservableObject {
 }
 
 private enum PiSessionCatalog {
-    static func allSessions() -> [PiSavedSession] {
-        let root = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".pi/agent/sessions", isDirectory: true)
+    static func allSessions(at root: URL) -> [PiSavedSession] {
         guard let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: [.isRegularFileKey],
