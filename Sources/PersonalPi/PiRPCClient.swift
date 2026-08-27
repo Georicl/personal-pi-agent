@@ -47,6 +47,11 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
     var onTermination: ((String) -> Void)?
     var onUIRequest: ((PiUIRequest) -> Void)?
 
+    var processIdentifier: Int32? {
+        guard let process, process.isRunning else { return nil }
+        return process.processIdentifier
+    }
+
     func configuredModelLabel(for workingDirectory: String) -> String? {
         PiLaunchConfiguration.modelLabel(for: workingDirectory)
     }
@@ -503,14 +508,22 @@ enum PiLaunchConfiguration {
     }
 
     static func resolvedExecutable() -> String? {
+        resolvedExecutable(named: "pi", overrideEnvironmentKey: "PERSONAL_PI_EXECUTABLE")
+    }
+
+    static func resolvedNodeExecutable() -> String? {
+        resolvedExecutable(named: "node", overrideEnvironmentKey: "PERSONAL_PI_NODE_EXECUTABLE")
+    }
+
+    private static func resolvedExecutable(named name: String, overrideEnvironmentKey: String) -> String? {
         var seen = Set<String>()
         var candidates: [String] = []
-        if let override = ProcessInfo.processInfo.environment["PERSONAL_PI_EXECUTABLE"],
+        if let override = ProcessInfo.processInfo.environment[overrideEnvironmentKey],
            !override.isEmpty {
             candidates.append(override)
         }
         for directory in augmentedPathDirectories() {
-            candidates.append((directory as NSString).appendingPathComponent("pi"))
+            candidates.append((directory as NSString).appendingPathComponent(name))
         }
         for candidate in candidates {
             let path = URL(fileURLWithPath: candidate).standardizedFileURL.path

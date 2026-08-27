@@ -41,3 +41,20 @@ Web/Desktop Interface
 3. 实现代码、资料阅读、研究和报告工作流。
 4. 接入网络搜索、浏览器、Obsidian、Zotero 等外部能力。
 5. 构建个人网页工作台。
+
+## 开发与兼容性
+
+构建并签名本地 macOS App：
+
+```bash
+scripts/build-app.sh debug
+```
+
+运行本机 Pi/RPC 兼容性检查：
+
+```bash
+scripts/check-pi-compatibility.sh
+```
+
+- [Pi 兼容性记录](docs/pi-compatibility.md)
+- [Personal Pi 配置协议](docs/configuration-contract.md)

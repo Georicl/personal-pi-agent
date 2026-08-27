@@ -8,6 +8,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case knowledge
     case projects
     case tasks
+    case diagnostics
 
     var id: String { rawValue }
 
@@ -18,6 +19,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .knowledge: "Knowledge"
         case .projects: "Projects"
         case .tasks: "Tasks"
+        case .diagnostics: "Diagnostics"
         }
     }
 
@@ -28,6 +30,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .knowledge: "line.3.horizontal"
         case .projects: "tablecells"
         case .tasks: "diamond.inset.filled"
+        case .diagnostics: "stethoscope"
         }
     }
 }
