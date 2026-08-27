@@ -21,6 +21,8 @@
 - Global Knowledge：`~/.pi/knowledge`。
 - Project Knowledge：`<project>/.pi/knowledge`。
 - Task State：`~/.pi/agent/personal-pi-tasks.json`，记录 Submitted、Running、Waiting、Finished 和未读完成状态。
+- Settings：在 GUI 中分别编辑全局 `~/.pi/agent/settings.json` 和项目 `.pi/settings.json`，并查看合并后的 Effective 配置。
+- Slash Commands：Session 输入 `/` 可发现 GUI 命令、Pi Extensions、Prompt Templates 和 Skills 命令。
 
 ## 计划中的层次
 

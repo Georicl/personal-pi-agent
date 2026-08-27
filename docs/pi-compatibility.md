@@ -49,6 +49,7 @@ Personal Pi currently uses:
 - `get_state`
 - `get_messages`
 - `get_available_models`
+- `get_commands`
 - `set_model`
 - `set_thinking_level`
 - `new_session`
@@ -57,17 +58,18 @@ Personal Pi currently uses:
 - `abort`
 - `compact`
 - `get_session_stats`
+- `set_session_name`
 - `extension_ui_response`
 
 Pi 0.84.3 also documents, but the GUI does not yet expose:
 
 - steering and follow-up queues
 - model/thinking cycling and available thinking levels
-- auto-compaction and retry settings
 - standalone bash execution and cancellation
-- HTML export and session naming
+- HTML export
 - `fork`, `clone`, `get_fork_messages`, `get_entries`, and `get_tree`
-- registered command discovery
+
+The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. The Session composer merges native GUI actions with `get_commands` results, so extension commands, prompt templates, and skill commands are available through the slash-command palette.
 
 The GUI handles these event families today:
 

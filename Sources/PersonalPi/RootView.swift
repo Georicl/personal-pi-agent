@@ -473,6 +473,10 @@ struct DetailView: View {
                 ScrollView(showsIndicators: false) {
                     RuntimeDiagnosticsView()
                 }
+            case .settings:
+                ScrollView(showsIndicators: false) {
+                    SettingsView()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

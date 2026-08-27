@@ -9,6 +9,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case projects
     case tasks
     case diagnostics
+    case settings
 
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .projects: "Projects"
         case .tasks: "Tasks"
         case .diagnostics: "Diagnostics"
+        case .settings: "Settings"
         }
     }
 
@@ -31,7 +33,28 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .projects: "tablecells"
         case .tasks: "diamond.inset.filled"
         case .diagnostics: "stethoscope"
+        case .settings: "gearshape"
         }
+    }
+}
+
+struct PiSlashCommand: Identifiable, Sendable, Hashable {
+    let name: String
+    let description: String
+    let source: String
+    let location: String?
+    let path: String?
+
+    var id: String { "\(source):\(name):\(path ?? "")" }
+
+    var invocation: String { "/\(name)" }
+
+    var sourceLabel: String {
+        if source == "native" { return "GUI" }
+        if let location, !location.isEmpty {
+            return "\(source.capitalized) · \(location.capitalized)"
+        }
+        return source.capitalized
     }
 }
 
@@ -181,6 +204,7 @@ final class AppState: ObservableObject {
     @Published private(set) var sessionModel = "Model not selected"
     @Published private(set) var sessionId: String?
     @Published private(set) var availableModels: [PiModelOption] = []
+    @Published private(set) var availableCommands: [PiSlashCommand] = AppState.nativeCommands
     @Published private(set) var thinkingLevel = "off"
     @Published private(set) var savedSessions: [PiSavedSession] = []
     @Published private(set) var projectGroups: [PiProjectGroup] = []
@@ -292,6 +316,7 @@ final class AppState: ObservableObject {
                         self.reloadSession()
                     }
                     self.loadModels()
+                    self.refreshCommands()
                     self.refreshSavedSessions()
                     if let pendingPrompt = self.pendingPrompt {
                         self.pendingPrompt = nil
@@ -314,6 +339,9 @@ final class AppState: ObservableObject {
         let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         composerText = ""
+        if executeNativeCommand(text) {
+            return
+        }
         selectedSection = .sessions
         if !isPiRunning {
             pendingPrompt = text
@@ -517,6 +545,106 @@ final class AppState: ObservableObject {
             }
         }
     }
+
+    func refreshCommands() {
+        guard isPiRunning else {
+            availableCommands = Self.nativeCommands
+            return
+        }
+        piClient.requestCommands { [weak self] commands in
+            Task { @MainActor in
+                guard let self else { return }
+                let nativeNames = Set(Self.nativeCommands.map(\.name))
+                self.availableCommands = Self.nativeCommands + commands.filter { !nativeNames.contains($0.name) }
+            }
+        }
+    }
+
+    func applySettingsChange() {
+        sessionModel = piClient.configuredModelLabel(for: activeWorkingDirectory) ?? sessionModel
+        availableCommands = Self.nativeCommands
+        guard isPiRunning else {
+            connectionState = .ready
+            return
+        }
+        if let sessionId,
+           let currentSession = savedSessions.first(where: { $0.id == sessionId }) {
+            pendingSession = currentSession
+        }
+        agentStatus = "Reloading settings…"
+        restartPiForScope()
+    }
+
+    func insertSlashCommand(_ command: PiSlashCommand) {
+        composerText = command.invocation + " "
+    }
+
+    private func executeNativeCommand(_ input: String) -> Bool {
+        guard input.hasPrefix("/") else { return false }
+        let parts = input.dropFirst().split(maxSplits: 1) { $0.isWhitespace }
+        guard let rawName = parts.first else { return false }
+        let name = rawName.lowercased()
+        let argument = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        guard Self.nativeCommands.contains(where: { $0.name == name }) else { return false }
+
+        switch name {
+        case "settings":
+            selectedSection = .settings
+            agentStatus = "Ready"
+        case "new":
+            startNewSession()
+        case "compact":
+            compactSession()
+        case "model":
+            guard !argument.isEmpty else {
+                selectedSection = .settings
+                agentStatus = "Choose a model in Settings"
+                return true
+            }
+            if let model = availableModels.first(where: {
+                $0.identity.caseInsensitiveCompare(argument) == .orderedSame
+                    || $0.modelId.caseInsensitiveCompare(argument) == .orderedSame
+            }) {
+                selectModel(model)
+            } else {
+                agentStatus = "Unknown model: \(argument)"
+            }
+        case "thinking":
+            guard Self.thinkingLevels.contains(argument.lowercased()) else {
+                selectedSection = .settings
+                agentStatus = argument.isEmpty ? "Choose a thinking level in Settings" : "Unknown thinking level: \(argument)"
+                return true
+            }
+            selectThinkingLevel(argument.lowercased())
+        case "name":
+            guard !argument.isEmpty else {
+                agentStatus = "Usage: /name <session name>"
+                return true
+            }
+            piClient.setSessionName(argument) { [weak self] success in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.sessionName = success ? argument : self.sessionName
+                    self.agentStatus = success ? "Session renamed" : "Unable to rename session"
+                    if success { self.refreshSavedSessions() }
+                }
+            }
+        default:
+            return false
+        }
+        return true
+    }
+
+    static let thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+    private static let nativeCommands: [PiSlashCommand] = [
+        PiSlashCommand(name: "settings", description: "Open Global and Project Pi settings", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "new", description: "Start a new session", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "compact", description: "Compact the current session context", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "model", description: "Switch model: /model provider/model", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "thinking", description: "Set reasoning level: /thinking high", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "name", description: "Rename this session: /name title", source: "native", location: nil, path: nil)
+    ]
 
     func refreshSavedSessions() {
         guard !isRefreshingCatalog else {
@@ -748,6 +876,7 @@ final class AppState: ObservableObject {
         messages = []
         activities = []
         uiRequest = nil
+        availableCommands = Self.nativeCommands
         guard isPiRunning else {
             connectionState = .ready
             return

@@ -276,6 +276,28 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         }
     }
 
+    func requestCommands(completion: @escaping ([PiSlashCommand]) -> Void) {
+        request(type: "get_commands") { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any],
+                  let rawCommands = data["commands"] as? [[String: Any]] else {
+                completion([])
+                return
+            }
+            completion(rawCommands.compactMap { command in
+                guard let name = command["name"] as? String,
+                      let source = command["source"] as? String else { return nil }
+                return PiSlashCommand(
+                    name: name,
+                    description: command["description"] as? String ?? "",
+                    source: source,
+                    location: command["location"] as? String,
+                    path: command["path"] as? String
+                )
+            })
+        }
+    }
+
     func setModel(provider: String, modelId: String, completion: ((Bool) -> Void)? = nil) {
         request(type: "set_model", fields: ["provider": provider, "modelId": modelId]) { response in
             completion?(Self.responseSucceeded(response))
@@ -284,6 +306,12 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
 
     func setThinkingLevel(_ level: String, completion: ((Bool) -> Void)? = nil) {
         request(type: "set_thinking_level", fields: ["level": level]) { response in
+            completion?(Self.responseSucceeded(response))
+        }
+    }
+
+    func setSessionName(_ name: String, completion: ((Bool) -> Void)? = nil) {
+        request(type: "set_session_name", fields: ["name": name]) { response in
             completion?(Self.responseSucceeded(response))
         }
     }
