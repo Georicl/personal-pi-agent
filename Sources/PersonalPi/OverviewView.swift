@@ -224,8 +224,8 @@ struct ProviderUsageCard: View {
 
     private var statusText: String {
         switch account.state {
-        case .live: "available"
-        case .configured: "configured"
+        case .live: "ready"
+        case .configured: "checking"
         case .unavailable: "unavailable"
         }
     }
@@ -275,8 +275,8 @@ struct CodexUsageCard: View {
 
     private var statusText: String {
         switch account.state {
-        case .live: "oauth ok"
-        case .configured: "oauth"
+        case .live: "oauth ready"
+        case .configured: "checking"
         case .unavailable: "unavailable"
         }
     }
@@ -369,7 +369,7 @@ struct SessionUsageCard: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(usageStore.isRefreshing)
-                .help("Refresh usage")
+                .help("Refresh account status")
             }
 
             VStack(spacing: 6) {
