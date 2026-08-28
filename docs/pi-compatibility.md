@@ -11,6 +11,7 @@ This file records the Pi runtime contract that Personal Pi has actually checked.
 | Node.js | `25.2.1` | Local Finder-launch and RPC test |
 | macOS | 13+ target | `Package.swift` |
 | GUI transport | RPC JSONL over stdin/stdout | Pi RPC documentation and live GUI test |
+| Auth status adapter | `pi auth check --json --no-refresh` | Credential-free JSON checked for DeepSeek and OpenAI Codex |
 
 Primary online documentation:
 
@@ -41,6 +42,8 @@ The installed package contains matching version-local documentation under its `d
 | Trust decisions | `~/.pi/agent/trust.json` | Canonical project path | Trust controls project resource loading, not tool execution isolation |
 
 Personal Pi launches project RPC sessions with the project root as `cwd` and `--approve`. Global Chat uses `~/.pi/chat`, so it does not load a selected project's `.pi` resources.
+
+Account cards call Pi's `auth check` command without `--credentials`. Swift receives only `status`, `provider`, `authType`, and `reason`; it does not read `auth.json`, API keys, OAuth tokens, or provider-private usage endpoints. Pi 0.84.3 does not expose subscription limits through this command, so the GUI shows credential readiness and leaves daily/weekly limits unspecified.
 
 ## Verified RPC surface
 

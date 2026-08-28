@@ -7,7 +7,7 @@ This contract separates Pi-owned runtime state, Personal Pi data, and project-ow
 ```text
 ~/.pi/
 ├── agent/                         # Owned by Pi
-│   ├── auth.json                  # Credentials; never read by the GUI diagnostics
+│   ├── auth.json                  # Credentials; never read by the Swift GUI
 │   ├── settings.json              # Global Pi settings
 │   ├── trust.json                 # Saved project trust decisions
 │   ├── sessions/                  # Pi JSONL sessions
@@ -26,7 +26,8 @@ Rules:
 
 - Do not version-control `~/.pi/agent` as a whole.
 - Never copy `auth.json` into a project or frontend bundle.
-- The Swift GUI may display credential presence and provider status but not credential contents.
+- The Swift GUI may display auth-store presence and provider readiness but never opens credential contents.
+- Provider readiness comes from `pi auth check --provider <id> --json --no-refresh`; the GUI never requests `--credentials`.
 - Global Chat always runs with `~/.pi/chat` as cwd.
 - Global knowledge is an external source; it is retrieved on demand rather than injected wholesale into every prompt.
 

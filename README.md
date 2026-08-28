@@ -23,6 +23,7 @@
 - Task State：`~/.pi/agent/personal-pi-tasks.json`，记录 Submitted、Running、Waiting、Finished 和未读完成状态。
 - Settings：在 GUI 中分别编辑全局 `~/.pi/agent/settings.json` 和项目 `.pi/settings.json`，并查看合并后的 Effective 配置。
 - Slash Commands：Session 输入 `/` 可发现 GUI 命令、Pi Extensions、Prompt Templates 和 Skills 命令。
+- Account Status：通过 Pi 的无凭据 `auth check` 接口显示 provider readiness；Swift 不读取 API key、OAuth token 或私有用量接口。
 
 ## 计划中的层次
 

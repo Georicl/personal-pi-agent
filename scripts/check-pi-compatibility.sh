@@ -57,4 +57,44 @@ except subprocess.TimeoutExpired:
 print(json.dumps({"rpc": results, "missing": sorted(pending)}, indent=2))
 if pending or not all(result["success"] for result in results.values()):
     raise SystemExit(1)
+
+auth_results = {}
+blocked_fragments = ("credential", "token", "secret", "api_key", "apikey", "access", "refresh")
+
+def contains_blocked_key(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).lower()
+            if any(fragment in normalized for fragment in blocked_fragments):
+                return True
+            if contains_blocked_key(child):
+                return True
+    elif isinstance(value, list):
+        return any(contains_blocked_key(child) for child in value)
+    return False
+
+for provider in ("deepseek", "openai-codex"):
+    completed = subprocess.run(
+        ["pi", "auth", "check", "--provider", provider, "--json", "--no-refresh"],
+        cwd="/private/tmp",
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+    lines = [line for line in completed.stdout.splitlines() if line.strip()]
+    if not lines:
+        raise SystemExit(f"Pi auth check returned no JSON for {provider}")
+    payload = json.loads(lines[-1])
+    if payload.get("status") not in {"ready", "not_ready"}:
+        raise SystemExit(f"Unexpected Pi auth status for {provider}")
+    if contains_blocked_key(payload):
+        raise SystemExit(f"Pi auth check exposed a credential-shaped field for {provider}")
+    auth_results[provider] = {
+        key: payload[key]
+        for key in ("status", "provider", "authType", "reason")
+        if key in payload
+    }
+
+print(json.dumps({"auth": auth_results, "credentialsExposed": False}, indent=2))
 PY
