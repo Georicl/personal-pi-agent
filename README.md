@@ -59,5 +59,12 @@ scripts/build-app.sh debug
 scripts/check-pi-compatibility.sh
 ```
 
+验证公开 Starter Pack 的四个 Pi Skills：
+
+```bash
+scripts/check-starter-pack.sh
+```
+
 - [Pi 兼容性记录](docs/pi-compatibility.md)
 - [Personal Pi 配置协议](docs/configuration-contract.md)
+- [P4 全局上下文与核心 Skills](docs/p4-core-context-and-skills.md)
