@@ -52,7 +52,7 @@ struct SidebarView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     SidebarProjects()
-                    SidebarNavigation()
+                    SidebarNavigation(taskStore: appState.taskStore)
                     SidebarRecentSessions()
                 }
                 .padding(.horizontal, 12)
@@ -288,6 +288,7 @@ struct SidebarProjectRow: View {
 
 struct SidebarNavigation: View {
     @EnvironmentObject private var appState: AppState
+    @ObservedObject var taskStore: PiTaskStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -299,7 +300,7 @@ struct SidebarNavigation: View {
                 SidebarRow(
                     section: section,
                     isSelected: appState.selectedSection == section,
-                    badge: section == .tasks ? appState.taskStore.unreadCount : 0
+                    badge: section == .tasks ? taskStore.unreadCount : 0
                 ) {
                     appState.selectedSection = section
                 }
