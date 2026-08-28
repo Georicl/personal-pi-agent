@@ -30,8 +30,17 @@ struct SettingsView: View {
     @State private var thinkingLevel = ""
     @State private var theme = ""
     @State private var compaction = PiOptionalSetting.inherited
+    @State private var compactionReserveTokens = ""
+    @State private var compactionKeepRecentTokens = ""
     @State private var retry = PiOptionalSetting.inherited
     @State private var retryCount = ""
+    @State private var retryBaseDelayMs = ""
+    @State private var providerMaxRetryDelayMs = ""
+    @State private var steeringMode = ""
+    @State private var followUpMode = ""
+    @State private var transport = ""
+    @State private var imageAutoResize = PiOptionalSetting.inherited
+    @State private var imageBlocking = PiOptionalSetting.inherited
     @State private var skillCommands = PiOptionalSetting.inherited
     @State private var overridesTools = false
     @State private var selectedTools = Set<String>()
@@ -39,7 +48,8 @@ struct SettingsView: View {
     @State private var prompts = ""
     @State private var extensions = ""
     @State private var status = ""
-    @State private var hasLoadError = false
+    @State private var hasSourceError = false
+    @State private var statusIsError = false
 
     private let builtInTools = ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"]
 
@@ -172,12 +182,25 @@ struct SettingsView: View {
     }
 
     private var behaviorCard: some View {
-        SettingsCard(title: "Agent behavior", subtitle: "Compaction and retry are handled by Pi, not the Swift interface.") {
+        SettingsCard(title: "Agent behavior", subtitle: "Compaction, retry, delivery and image handling are applied by the Pi runtime.") {
             VStack(spacing: 13) {
                 optionalSettingRow(title: "Auto-compaction", selection: $compaction)
+                SettingsTextRow(title: "Reserved response tokens", placeholder: selectedScope == .project ? "Inherit" : "Pi default (16384)", text: $compactionReserveTokens)
+                    .disabled(isReadOnly)
+                SettingsTextRow(title: "Recent tokens to keep", placeholder: selectedScope == .project ? "Inherit" : "Pi default (20000)", text: $compactionKeepRecentTokens)
+                    .disabled(isReadOnly)
                 optionalSettingRow(title: "Automatic retry", selection: $retry)
                 SettingsTextRow(title: "Maximum retries", placeholder: selectedScope == .project ? "Inherit" : "Pi default (3)", text: $retryCount)
                     .disabled(isReadOnly)
+                SettingsTextRow(title: "Retry base delay (ms)", placeholder: selectedScope == .project ? "Inherit" : "Pi default (2000)", text: $retryBaseDelayMs)
+                    .disabled(isReadOnly)
+                SettingsTextRow(title: "Maximum retry delay (ms)", placeholder: selectedScope == .project ? "Inherit" : "Pi default (60000)", text: $providerMaxRetryDelayMs)
+                    .disabled(isReadOnly)
+                choiceRow(title: "Steering delivery", selection: $steeringMode, options: ["one-at-a-time", "all"])
+                choiceRow(title: "Follow-up delivery", selection: $followUpMode, options: ["one-at-a-time", "all"])
+                choiceRow(title: "Provider transport", selection: $transport, options: ["auto", "sse", "websocket", "websocket-cached"])
+                optionalSettingRow(title: "Resize large images", selection: $imageAutoResize)
+                optionalSettingRow(title: "Block images to model", selection: $imageBlocking)
                 optionalSettingRow(title: "Skill slash commands", selection: $skillCommands)
             }
         }
@@ -218,14 +241,14 @@ struct SettingsView: View {
             if !status.isEmpty {
                 Text(status)
                     .font(Theme.mono(10.5))
-                    .foregroundStyle(hasLoadError ? Theme.danger : Theme.muted)
+                    .foregroundStyle(statusIsError ? Theme.danger : Theme.muted)
                     .lineLimit(2)
             }
             Spacer()
             if !isReadOnly {
                 Button("Save settings") { save() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(hasLoadError)
+                    .disabled(hasSourceError)
             }
         }
         .padding(.top, 2)
@@ -261,6 +284,21 @@ struct SettingsView: View {
                 Text(inheritLabel).tag(PiOptionalSetting.inherited)
                 Text("Enabled").tag(PiOptionalSetting.enabled)
                 Text("Disabled").tag(PiOptionalSetting.disabled)
+            }
+            .labelsHidden()
+            .frame(width: 210)
+            .disabled(isReadOnly)
+        }
+    }
+
+    @ViewBuilder
+    private func choiceRow(title: String, selection: Binding<String>, options: [String]) -> some View {
+        SettingsPickerRow(title: title) {
+            Picker(title, selection: selection) {
+                Text(inheritLabel).tag("")
+                ForEach(options, id: \.self) { option in
+                    Text(choiceLabel(option)).tag(option)
+                }
             }
             .labelsHidden()
             .frame(width: 210)
@@ -333,19 +371,29 @@ struct SettingsView: View {
 
     private func load() {
         do {
-            globalDocument = try PiSettingsFile.read(globalURL)
-            projectDocument = appState.workspaceScope == .workspace ? try PiSettingsFile.read(projectURL) : [:]
             switch selectedScope {
-            case .global: baseDocument = globalDocument
-            case .project: baseDocument = projectDocument
-            case .effective: baseDocument = PiSettingsFile.merge(globalDocument, projectDocument)
+            case .global:
+                globalDocument = try PiSettingsFile.read(globalURL)
+                baseDocument = globalDocument
+            case .project:
+                projectDocument = try PiSettingsFile.read(projectURL)
+                globalDocument = (try? PiSettingsFile.read(globalURL)) ?? [:]
+                baseDocument = projectDocument
+            case .effective:
+                globalDocument = try PiSettingsFile.read(globalURL)
+                projectDocument = appState.workspaceScope == .workspace ? try PiSettingsFile.read(projectURL) : [:]
+                baseDocument = PiSettingsFile.merge(globalDocument, projectDocument)
             }
             populateFields(from: baseDocument)
             status = selectedScope == .effective ? "Merged preview — no file is changed" : "Loaded"
-            hasLoadError = false
+            hasSourceError = false
+            statusIsError = false
         } catch {
+            baseDocument = [:]
+            populateFields(from: [:])
             status = error.localizedDescription
-            hasLoadError = true
+            hasSourceError = true
+            statusIsError = true
         }
     }
 
@@ -355,8 +403,17 @@ struct SettingsView: View {
         thinkingLevel = document["defaultThinkingLevel"] as? String ?? ""
         theme = document["theme"] as? String ?? ""
         compaction = optionalMode(PiSettingsFile.value(in: document, path: ["compaction", "enabled"]))
+        compactionReserveTokens = numberString(PiSettingsFile.value(in: document, path: ["compaction", "reserveTokens"]))
+        compactionKeepRecentTokens = numberString(PiSettingsFile.value(in: document, path: ["compaction", "keepRecentTokens"]))
         retry = optionalMode(PiSettingsFile.value(in: document, path: ["retry", "enabled"]))
-        retryCount = (PiSettingsFile.value(in: document, path: ["retry", "maxRetries"]) as? NSNumber)?.stringValue ?? ""
+        retryCount = numberString(PiSettingsFile.value(in: document, path: ["retry", "maxRetries"]))
+        retryBaseDelayMs = numberString(PiSettingsFile.value(in: document, path: ["retry", "baseDelayMs"]))
+        providerMaxRetryDelayMs = numberString(PiSettingsFile.value(in: document, path: ["retry", "provider", "maxRetryDelayMs"]))
+        steeringMode = document["steeringMode"] as? String ?? ""
+        followUpMode = document["followUpMode"] as? String ?? ""
+        transport = document["transport"] as? String ?? ""
+        imageAutoResize = optionalMode(PiSettingsFile.value(in: document, path: ["images", "autoResize"]))
+        imageBlocking = optionalMode(PiSettingsFile.value(in: document, path: ["images", "blockImages"]))
         skillCommands = optionalMode(document["enableSkillCommands"])
         if let tools = document["defaultTools"] as? [String] {
             overridesTools = true
@@ -372,21 +429,48 @@ struct SettingsView: View {
 
     private func save() {
         guard let selectedURL else { return }
-        if !retryCount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard let count = Int(retryCount), (0...20).contains(count) else {
-                status = "Maximum retries must be an integer between 0 and 20"
+        let integerFields = [
+            ("Reserved response tokens", compactionReserveTokens),
+            ("Recent tokens to keep", compactionKeepRecentTokens),
+            ("Maximum retries", retryCount),
+            ("Retry base delay", retryBaseDelayMs),
+            ("Maximum retry delay", providerMaxRetryDelayMs)
+        ]
+        for (name, value) in integerFields {
+            guard PiSettingsFile.isOptionalNonnegativeInteger(value) else {
+                status = "\(name) must be a non-negative integer"
+                statusIsError = true
                 return
             }
         }
 
-        var document = baseDocument
+        let currentDocument: [String: Any]
+        do {
+            currentDocument = try PiSettingsFile.read(selectedURL)
+        } catch {
+            status = "Reload required before saving · \(error.localizedDescription)"
+            hasSourceError = true
+            statusIsError = true
+            return
+        }
+
+        var document = currentDocument
         PiSettingsFile.setString(provider, key: "defaultProvider", in: &document)
         PiSettingsFile.setString(model, key: "defaultModel", in: &document)
         PiSettingsFile.setString(thinkingLevel, key: "defaultThinkingLevel", in: &document)
         PiSettingsFile.setString(theme, key: "theme", in: &document)
         PiSettingsFile.setOptionalBool(compaction, path: ["compaction", "enabled"], in: &document)
+        PiSettingsFile.setOptionalInt(compactionReserveTokens, path: ["compaction", "reserveTokens"], in: &document)
+        PiSettingsFile.setOptionalInt(compactionKeepRecentTokens, path: ["compaction", "keepRecentTokens"], in: &document)
         PiSettingsFile.setOptionalBool(retry, path: ["retry", "enabled"], in: &document)
         PiSettingsFile.setOptionalInt(retryCount, path: ["retry", "maxRetries"], in: &document)
+        PiSettingsFile.setOptionalInt(retryBaseDelayMs, path: ["retry", "baseDelayMs"], in: &document)
+        PiSettingsFile.setOptionalInt(providerMaxRetryDelayMs, path: ["retry", "provider", "maxRetryDelayMs"], in: &document)
+        PiSettingsFile.setString(steeringMode, key: "steeringMode", in: &document)
+        PiSettingsFile.setString(followUpMode, key: "followUpMode", in: &document)
+        PiSettingsFile.setString(transport, key: "transport", in: &document)
+        PiSettingsFile.setOptionalBool(imageAutoResize, path: ["images", "autoResize"], in: &document)
+        PiSettingsFile.setOptionalBool(imageBlocking, path: ["images", "blockImages"], in: &document)
         PiSettingsFile.setOptionalBool(skillCommands, path: ["enableSkillCommands"], in: &document)
         if overridesTools { document["defaultTools"] = builtInTools.filter(selectedTools.contains) }
         else { document.removeValue(forKey: "defaultTools") }
@@ -397,11 +481,15 @@ struct SettingsView: View {
         do {
             try PiSettingsFile.write(document, to: selectedURL)
             baseDocument = document
+            if selectedScope == .global { globalDocument = document }
+            if selectedScope == .project { projectDocument = document }
             status = "Saved · Pi runtime reloading"
-            hasLoadError = false
+            hasSourceError = false
+            statusIsError = false
             appState.applySettingsChange()
         } catch {
             status = error.localizedDescription
+            statusIsError = true
         }
     }
 
@@ -412,6 +500,20 @@ struct SettingsView: View {
 
     private func stringList(_ value: Any?) -> String {
         (value as? [String] ?? []).joined(separator: "\n")
+    }
+
+    private func numberString(_ value: Any?) -> String {
+        (value as? NSNumber)?.stringValue ?? ""
+    }
+
+    private func choiceLabel(_ value: String) -> String {
+        switch value {
+        case "one-at-a-time": "One at a time"
+        case "websocket": "WebSocket"
+        case "websocket-cached": "WebSocket cached"
+        case "sse": "SSE"
+        default: value.capitalized
+        }
     }
 
     private func reveal(_ url: URL) {
@@ -495,6 +597,13 @@ private struct SettingsPickerRow<Content: View>: View {
 }
 
 private enum PiSettingsFile {
+    static func isOptionalNonnegativeInteger(_ raw: String) -> Bool {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return true }
+        guard let integer = Int(value) else { return false }
+        return integer >= 0
+    }
+
     static func read(_ url: URL) throws -> [String: Any] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
         let data = try Data(contentsOf: url)
