@@ -22,8 +22,8 @@
 - Project Knowledge：`<project>/.pi/knowledge`。
 - Task State：`~/.pi/agent/personal-pi-tasks.json`，记录 Submitted、Running、Waiting、Finished 和未读完成状态。
 - Settings：在 GUI 中分别编辑全局 `~/.pi/agent/settings.json` 和项目 `.pi/settings.json`，并查看合并后的 Effective 配置。
-- Slash Commands：Session 输入 `/` 可发现 GUI 命令、Pi Extensions、Prompt Templates 和 Skills 命令。
-- Account Status：通过 Pi 的无凭据 `auth check` 接口显示 provider readiness；Swift 不读取 API key、OAuth token 或私有用量接口。
+- Slash Commands：Overview 和 Session 共用命令输入组件；输入 `/` 可发现并滚动浏览 GUI 命令、Pi Extensions、Prompt Templates 和 Skills 命令。
+- Account Status：provider readiness 通过 Pi 的无凭据 `auth check` 读取；Codex 限额通过本机 Codex App Server 的 `account/rateLimits/read` 读取真实窗口。Swift 不读取 API key 或 OAuth token。
 
 ## 计划中的层次
 
@@ -52,6 +52,8 @@ Web/Desktop Interface
 ```bash
 scripts/build-app.sh debug
 ```
+
+应用会从当前 `PATH` 和常见用户级安装目录发现 `pi`、`node` 与 `codex`。如需覆盖 Codex CLI 路径，可设置 `PERSONAL_PI_CODEX_EXECUTABLE`。
 
 运行本机 Pi/RPC 兼容性检查：
 

@@ -543,6 +543,10 @@ enum PiLaunchConfiguration {
         resolvedExecutable(named: "node", overrideEnvironmentKey: "PERSONAL_PI_NODE_EXECUTABLE")
     }
 
+    static func resolvedCodexExecutable() -> String? {
+        resolvedExecutable(named: "codex", overrideEnvironmentKey: "PERSONAL_PI_CODEX_EXECUTABLE")
+    }
+
     private static func resolvedExecutable(named name: String, overrideEnvironmentKey: String) -> String? {
         var seen = Set<String>()
         var candidates: [String] = []

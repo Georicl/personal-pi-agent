@@ -56,37 +56,13 @@ struct OverviewView: View {
                         .buttonStyle(.plain)
                     }
 
-                    HStack(alignment: .bottom, spacing: 12) {
-                        TextField(
-                            appState.workspaceScope == .global
-                                ? "What should Pi work on?"
-                                : "What should Pi work on in \(appState.workspace.name)?",
-                            text: $appState.composerText,
-                            axis: .vertical
-                        )
-                        .textFieldStyle(.plain)
-                        .font(Theme.sans(14))
-                        .lineLimit(1...4)
-                        .onSubmit { appState.sendPrompt() }
-
-                        Button {
-                            appState.sendPrompt()
-                        } label: {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 28, height: 28)
-                                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .help("Send")
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color(red: 216 / 255, green: 221 / 255, blue: 227 / 255), lineWidth: 1)
+                    SlashCommandInput(
+                        placeholder: appState.workspaceScope == .global
+                            ? "What should Pi work on?"
+                            : "What should Pi work on in \(appState.workspace.name)?",
+                        maximumLines: 4,
+                        inputBackground: Theme.canvas,
+                        sendButtonSize: 28
                     )
 
                     HStack(spacing: 14) {
@@ -107,7 +83,7 @@ struct OverviewView: View {
                 )
             }
 
-            AccountUsageRow()
+            AccountUsageRow(usageStore: appState.usageStore)
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -200,20 +176,20 @@ struct RuntimeNotice: View {
 }
 
 struct AccountUsageRow: View {
-    @EnvironmentObject private var appState: AppState
+    @ObservedObject var usageStore: AccountUsageStore
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
-            ForEach(appState.usageStore.accounts) { account in
+            ForEach(usageStore.accounts) { account in
                 if account.id == "openai-codex" {
-                    CodexUsageCard(account: account)
+                    CodexUsageCard(account: account, usageStore: usageStore)
                         .frame(minWidth: 220, maxWidth: .infinity)
                 } else {
                     ProviderUsageCard(account: account)
                         .frame(minWidth: 220, maxWidth: .infinity)
                 }
             }
-            SessionUsageCard(usageStore: appState.usageStore)
+            SessionUsageCard(usageStore: usageStore)
                 .frame(minWidth: 220, maxWidth: .infinity)
         }
     }
@@ -272,10 +248,11 @@ struct ProviderUsageCard: View {
 
 struct CodexUsageCard: View {
     let account: AccountUsage
+    @ObservedObject var usageStore: AccountUsageStore
 
     private var statusText: String {
         switch account.state {
-        case .live: "oauth ready"
+        case .live: account.windows.isEmpty ? "oauth ready" : "limits live"
         case .configured: "checking"
         case .unavailable: "unavailable"
         }
@@ -299,11 +276,30 @@ struct CodexUsageCard: View {
                 Text(statusText)
                     .font(Theme.mono(9.5))
                     .foregroundStyle(statusColor)
+                Button {
+                    usageStore.refresh()
+                } label: {
+                    Image(systemName: usageStore.isRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundStyle(Theme.dim)
+                }
+                .buttonStyle(.plain)
+                .disabled(usageStore.isRefreshing)
+                .help("Refresh account limits")
             }
 
             VStack(spacing: 8) {
-                UsageMeter(label: "daily", progress: account.progress, tint: Theme.accent)
-                UsageMeter(label: "weekly", progress: account.secondaryProgress, tint: Theme.accent.opacity(0.55))
+                if account.windows.isEmpty {
+                    UsageMeter(label: "limits", progress: nil, tint: Theme.accent)
+                } else {
+                    ForEach(Array(account.windows.enumerated()), id: \.element.id) { index, window in
+                        UsageMeter(
+                            label: window.label,
+                            progress: window.progress,
+                            tint: index == 0 ? Theme.accent : Theme.accent.opacity(0.55)
+                        )
+                    }
+                }
             }
 
             Text(account.detail)
@@ -360,16 +356,6 @@ struct SessionUsageCard: View {
                     .font(Theme.sans(12.5, weight: .medium))
                     .foregroundStyle(Theme.ink)
                 Spacer(minLength: 0)
-                Button {
-                    usageStore.refresh()
-                } label: {
-                    Image(systemName: usageStore.isRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Theme.dim)
-                }
-                .buttonStyle(.plain)
-                .disabled(usageStore.isRefreshing)
-                .help("Refresh account status")
             }
 
             VStack(spacing: 6) {
