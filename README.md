@@ -21,6 +21,8 @@
 - Global Knowledge：`~/.pi/knowledge`。
 - Project Knowledge：`<project>/.pi/knowledge`。
 - Task State：`~/.pi/agent/personal-pi-tasks.json`，记录 Submitted、Running、Waiting、Finished 和未读完成状态。
+- Settings：在 GUI 中分别编辑全局 `~/.pi/agent/settings.json` 和项目 `.pi/settings.json`，并查看合并后的 Effective 配置。
+- Slash Commands：Session 输入 `/` 可发现 GUI 命令、Pi Extensions、Prompt Templates 和 Skills 命令。
 
 ## 计划中的层次
 
@@ -41,3 +43,20 @@ Web/Desktop Interface
 3. 实现代码、资料阅读、研究和报告工作流。
 4. 接入网络搜索、浏览器、Obsidian、Zotero 等外部能力。
 5. 构建个人网页工作台。
+
+## 开发与兼容性
+
+构建并签名本地 macOS App：
+
+```bash
+scripts/build-app.sh debug
+```
+
+运行本机 Pi/RPC 兼容性检查：
+
+```bash
+scripts/check-pi-compatibility.sh
+```
+
+- [Pi 兼容性记录](docs/pi-compatibility.md)
+- [Personal Pi 配置协议](docs/configuration-contract.md)

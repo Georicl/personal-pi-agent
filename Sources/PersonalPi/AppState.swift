@@ -8,6 +8,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     case knowledge
     case projects
     case tasks
+    case diagnostics
+    case settings
 
     var id: String { rawValue }
 
@@ -18,6 +20,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .knowledge: "Knowledge"
         case .projects: "Projects"
         case .tasks: "Tasks"
+        case .diagnostics: "Diagnostics"
+        case .settings: "Settings"
         }
     }
 
@@ -28,7 +32,29 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .knowledge: "line.3.horizontal"
         case .projects: "tablecells"
         case .tasks: "diamond.inset.filled"
+        case .diagnostics: "stethoscope"
+        case .settings: "gearshape"
         }
+    }
+}
+
+struct PiSlashCommand: Identifiable, Sendable, Hashable {
+    let name: String
+    let description: String
+    let source: String
+    let location: String?
+    let path: String?
+
+    var id: String { "\(source):\(name):\(path ?? "")" }
+
+    var invocation: String { "/\(name)" }
+
+    var sourceLabel: String {
+        if source == "native" { return "GUI" }
+        if let location, !location.isEmpty {
+            return "\(source.capitalized) · \(location.capitalized)"
+        }
+        return source.capitalized
     }
 }
 
@@ -178,6 +204,7 @@ final class AppState: ObservableObject {
     @Published private(set) var sessionModel = "Model not selected"
     @Published private(set) var sessionId: String?
     @Published private(set) var availableModels: [PiModelOption] = []
+    @Published private(set) var availableCommands: [PiSlashCommand] = AppState.nativeCommands
     @Published private(set) var thinkingLevel = "off"
     @Published private(set) var savedSessions: [PiSavedSession] = []
     @Published private(set) var projectGroups: [PiProjectGroup] = []
@@ -195,11 +222,13 @@ final class AppState: ObservableObject {
     let piClient = PiRPCClient()
     let usageStore = AccountUsageStore()
     let taskStore = PiTaskStore()
+    let piRootDirectory: String
     let globalChatDirectory: String
     let globalKnowledgeDirectory: String
 
     init() {
         let piRoot = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".pi", isDirectory: true)
+        piRootDirectory = piRoot.path
         globalChatDirectory = piRoot.appendingPathComponent("chat", isDirectory: true).path
         globalKnowledgeDirectory = piRoot.appendingPathComponent("knowledge", isDirectory: true).path
         Self.ensureDirectory(at: globalChatDirectory)
@@ -218,7 +247,6 @@ final class AppState: ObservableObject {
             workspaces = initialWorkspaces
             currentProject = workspace.name
             currentProjectPath = workspace.path
-            Self.ensureDirectory(at: projectKnowledgeDirectory(for: workspace.path))
         }
 
         if PiLaunchConfiguration.resolvedExecutable() == nil {
@@ -258,6 +286,21 @@ final class AppState: ObservableObject {
                 )
             }
         }
+        piClient.onTermination = { [weak self] message in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isPiRunning = false
+                self.isGenerating = false
+                self.connectionState = .unavailable(message)
+                self.agentStatus = message
+                self.taskStore.update(
+                    id: self.activeTaskId,
+                    state: .finished,
+                    detail: message,
+                    unread: true
+                )
+            }
+        }
         piClient.start(
             workingDirectory: activeWorkingDirectory,
             projectTrusted: true
@@ -273,6 +316,7 @@ final class AppState: ObservableObject {
                         self.reloadSession()
                     }
                     self.loadModels()
+                    self.refreshCommands()
                     self.refreshSavedSessions()
                     if let pendingPrompt = self.pendingPrompt {
                         self.pendingPrompt = nil
@@ -295,6 +339,9 @@ final class AppState: ObservableObject {
         let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         composerText = ""
+        if executeNativeCommand(text) {
+            return
+        }
         selectedSection = .sessions
         if !isPiRunning {
             pendingPrompt = text
@@ -499,6 +546,106 @@ final class AppState: ObservableObject {
         }
     }
 
+    func refreshCommands() {
+        guard isPiRunning else {
+            availableCommands = Self.nativeCommands
+            return
+        }
+        piClient.requestCommands { [weak self] commands in
+            Task { @MainActor in
+                guard let self else { return }
+                let nativeNames = Set(Self.nativeCommands.map(\.name))
+                self.availableCommands = Self.nativeCommands + commands.filter { !nativeNames.contains($0.name) }
+            }
+        }
+    }
+
+    func applySettingsChange() {
+        sessionModel = piClient.configuredModelLabel(for: activeWorkingDirectory) ?? sessionModel
+        availableCommands = Self.nativeCommands
+        guard isPiRunning else {
+            connectionState = .ready
+            return
+        }
+        if let sessionId,
+           let currentSession = savedSessions.first(where: { $0.id == sessionId }) {
+            pendingSession = currentSession
+        }
+        agentStatus = "Reloading settings…"
+        restartPiForScope()
+    }
+
+    func insertSlashCommand(_ command: PiSlashCommand) {
+        composerText = command.invocation + " "
+    }
+
+    private func executeNativeCommand(_ input: String) -> Bool {
+        guard input.hasPrefix("/") else { return false }
+        let parts = input.dropFirst().split(maxSplits: 1) { $0.isWhitespace }
+        guard let rawName = parts.first else { return false }
+        let name = rawName.lowercased()
+        let argument = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        guard Self.nativeCommands.contains(where: { $0.name == name }) else { return false }
+
+        switch name {
+        case "settings":
+            selectedSection = .settings
+            agentStatus = "Ready"
+        case "new":
+            startNewSession()
+        case "compact":
+            compactSession()
+        case "model":
+            guard !argument.isEmpty else {
+                selectedSection = .settings
+                agentStatus = "Choose a model in Settings"
+                return true
+            }
+            if let model = availableModels.first(where: {
+                $0.identity.caseInsensitiveCompare(argument) == .orderedSame
+                    || $0.modelId.caseInsensitiveCompare(argument) == .orderedSame
+            }) {
+                selectModel(model)
+            } else {
+                agentStatus = "Unknown model: \(argument)"
+            }
+        case "thinking":
+            guard Self.thinkingLevels.contains(argument.lowercased()) else {
+                selectedSection = .settings
+                agentStatus = argument.isEmpty ? "Choose a thinking level in Settings" : "Unknown thinking level: \(argument)"
+                return true
+            }
+            selectThinkingLevel(argument.lowercased())
+        case "name":
+            guard !argument.isEmpty else {
+                agentStatus = "Usage: /name <session name>"
+                return true
+            }
+            piClient.setSessionName(argument) { [weak self] success in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.sessionName = success ? argument : self.sessionName
+                    self.agentStatus = success ? "Session renamed" : "Unable to rename session"
+                    if success { self.refreshSavedSessions() }
+                }
+            }
+        default:
+            return false
+        }
+        return true
+    }
+
+    static let thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+    private static let nativeCommands: [PiSlashCommand] = [
+        PiSlashCommand(name: "settings", description: "Open Global and Project Pi settings", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "new", description: "Start a new session", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "compact", description: "Compact the current session context", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "model", description: "Switch model: /model provider/model", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "thinking", description: "Set reasoning level: /thinking high", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "name", description: "Rename this session: /name title", source: "native", location: nil, path: nil)
+    ]
+
     func refreshSavedSessions() {
         guard !isRefreshingCatalog else {
             needsCatalogRefresh = true
@@ -506,12 +653,20 @@ final class AppState: ObservableObject {
         }
         isRefreshingCatalog = true
         let workspacePaths = workspaces.map(\.path)
+        let sessionRoot = URL(fileURLWithPath: piRootDirectory)
+            .appendingPathComponent("agent/sessions", isDirectory: true)
+        let globalRoot = globalChatDirectory
 
         Task {
             let snapshot = await Task.detached(priority: .utility) {
-                let sessions = PiSessionCatalog.allSessions()
+                let sessions = PiSessionCatalog.allSessions(at: sessionRoot)
                 let groups = PiSessionCatalog.projectGroups(from: sessions)
-                let inspected = workspacePaths.map {
+                let discoveredPaths = Self.discoveredWorkspacePaths(
+                    registeredPaths: workspacePaths,
+                    sessions: sessions,
+                    excluding: globalRoot
+                )
+                let inspected = discoveredPaths.map {
                     PiWorkspaceInspector.inspect(path: $0, sessions: sessions)
                 }
                 return PiCatalogSnapshot(sessions: sessions, groups: groups, workspaces: inspected)
@@ -600,7 +755,6 @@ final class AppState: ObservableObject {
         workspace = selectedWorkspace
         currentProject = workspace.name
         currentProjectPath = workspace.path
-        Self.ensureDirectory(at: projectKnowledgeDirectory(for: workspace.path))
         sessionProjectFilter = nil
         restartPiForScope()
         refreshSavedSessions()
@@ -722,6 +876,7 @@ final class AppState: ObservableObject {
         messages = []
         activities = []
         uiRequest = nil
+        availableCommands = Self.nativeCommands
         guard isPiRunning else {
             connectionState = .ready
             return
@@ -751,12 +906,35 @@ final class AppState: ObservableObject {
             appendIfExists(saved)
         }
 
-        let homeProject = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("personal-pi-agent", isDirectory: true)
-            .path
-        if fileManager.fileExists(atPath: (homeProject as NSString).appendingPathComponent("Package.swift")) {
-            appendIfExists(homeProject)
+        return paths
+    }
+
+    nonisolated private static func discoveredWorkspacePaths(
+        registeredPaths: [String],
+        sessions: [PiSavedSession],
+        excluding globalChatDirectory: String
+    ) -> [String] {
+        let fileManager = FileManager.default
+        var paths: [String] = []
+
+        func appendProject(_ rawPath: String) {
+            guard !rawPath.isEmpty else { return }
+            let path = URL(fileURLWithPath: rawPath).standardizedFileURL.path
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  !PiWorkspaceInspector.isInside(path, root: globalChatDirectory),
+                  !paths.contains(path) else { return }
+
+            // Explicitly registered roots own nested session directories. A
+            // session cwd becomes a project only when no existing project
+            // already contains it.
+            guard !paths.contains(where: { PiWorkspaceInspector.isInside(path, root: $0) }) else { return }
+            paths.append(path)
         }
+
+        registeredPaths.forEach(appendProject)
+        sessions.forEach { appendProject($0.cwd) }
         return paths
     }
 
@@ -880,9 +1058,7 @@ final class AppState: ObservableObject {
 }
 
 private enum PiSessionCatalog {
-    static func allSessions() -> [PiSavedSession] {
-        let root = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".pi/agent/sessions", isDirectory: true)
+    static func allSessions(at root: URL) -> [PiSavedSession] {
         guard let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: [.isRegularFileKey],

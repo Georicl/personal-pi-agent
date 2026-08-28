@@ -44,7 +44,13 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
     private var didFinishLaunch = false
     var onEvent: ((PiStreamEvent) -> Void)?
     var onError: ((String) -> Void)?
+    var onTermination: ((String) -> Void)?
     var onUIRequest: ((PiUIRequest) -> Void)?
+
+    var processIdentifier: Int32? {
+        guard let process, process.isRunning else { return nil }
+        return process.processIdentifier
+    }
 
     func configuredModelLabel(for workingDirectory: String) -> String? {
         PiLaunchConfiguration.modelLabel(for: workingDirectory)
@@ -138,8 +144,14 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
             self.outputPipe = nil
             self.stderrLock.lock()
             let snippet = self.launchStderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            let launchCompleted = self.didFinishLaunch
             self.stderrLock.unlock()
-            complete(false, snippet.isEmpty ? "Pi exited with status \(process.terminationStatus)" : snippet)
+            let message = snippet.isEmpty ? "Pi exited with status \(process.terminationStatus)" : snippet
+            if launchCompleted {
+                self.onTermination?(message)
+            } else {
+                complete(false, message)
+            }
         }
 
         do {
@@ -264,6 +276,28 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         }
     }
 
+    func requestCommands(completion: @escaping ([PiSlashCommand]) -> Void) {
+        request(type: "get_commands") { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any],
+                  let rawCommands = data["commands"] as? [[String: Any]] else {
+                completion([])
+                return
+            }
+            completion(rawCommands.compactMap { command in
+                guard let name = command["name"] as? String,
+                      let source = command["source"] as? String else { return nil }
+                return PiSlashCommand(
+                    name: name,
+                    description: command["description"] as? String ?? "",
+                    source: source,
+                    location: command["location"] as? String,
+                    path: command["path"] as? String
+                )
+            })
+        }
+    }
+
     func setModel(provider: String, modelId: String, completion: ((Bool) -> Void)? = nil) {
         request(type: "set_model", fields: ["provider": provider, "modelId": modelId]) { response in
             completion?(Self.responseSucceeded(response))
@@ -272,6 +306,12 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
 
     func setThinkingLevel(_ level: String, completion: ((Bool) -> Void)? = nil) {
         request(type: "set_thinking_level", fields: ["level": level]) { response in
+            completion?(Self.responseSucceeded(response))
+        }
+    }
+
+    func setSessionName(_ name: String, completion: ((Bool) -> Void)? = nil) {
+        request(type: "set_session_name", fields: ["name": name]) { response in
             completion?(Self.responseSucceeded(response))
         }
     }
@@ -318,6 +358,8 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
     func stop() {
         process?.terminate()
         process = nil
+        inputPipe = nil
+        outputPipe = nil
     }
 
     private func request(type: String, fields: [String: Any] = [:], completion: @escaping ([String: Any]) -> Void) {
@@ -494,13 +536,22 @@ enum PiLaunchConfiguration {
     }
 
     static func resolvedExecutable() -> String? {
+        resolvedExecutable(named: "pi", overrideEnvironmentKey: "PERSONAL_PI_EXECUTABLE")
+    }
+
+    static func resolvedNodeExecutable() -> String? {
+        resolvedExecutable(named: "node", overrideEnvironmentKey: "PERSONAL_PI_NODE_EXECUTABLE")
+    }
+
+    private static func resolvedExecutable(named name: String, overrideEnvironmentKey: String) -> String? {
         var seen = Set<String>()
         var candidates: [String] = []
-        if let fromShell = whichFromLoginShell("pi") {
-            candidates.append(fromShell)
+        if let override = ProcessInfo.processInfo.environment[overrideEnvironmentKey],
+           !override.isEmpty {
+            candidates.append(override)
         }
         for directory in augmentedPathDirectories() {
-            candidates.append((directory as NSString).appendingPathComponent("pi"))
+            candidates.append((directory as NSString).appendingPathComponent(name))
         }
         for candidate in candidates {
             let path = URL(fileURLWithPath: candidate).standardizedFileURL.path
@@ -519,43 +570,61 @@ enum PiLaunchConfiguration {
     }
 
     private static func augmentedPathDirectories() -> [String] {
-        var directories: [String] = []
-        if let node = whichFromLoginShell("node") {
-            directories.append((node as NSString).deletingLastPathComponent)
-        }
+        let home = NSHomeDirectory()
+        let inherited = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        var directories = inherited.split(separator: ":").map(String.init)
         directories.append(contentsOf: [
             NSHomeDirectory() + "/.local/bin",
+            home + "/.npm-global/bin",
+            home + "/.volta/bin",
+            home + "/.asdf/shims",
+            home + "/.local/share/pnpm",
+            home + "/Library/pnpm",
+            home + "/.bun/bin",
             "/opt/homebrew/bin",
             "/usr/local/bin"
         ])
-        let inherited = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        directories.append(contentsOf: inherited.split(separator: ":").map(String.init))
+        directories.append(contentsOf: nvmBinDirectories())
+        directories.append(contentsOf: fnmBinDirectories())
         var seen = Set<String>()
         return directories.filter { seen.insert($0).inserted }
     }
 
-    private static func whichFromLoginShell(_ command: String) -> String? {
-        let process = Process()
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-lic", "command -v \(command)"]
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
+    private static func nvmBinDirectories() -> [String] {
+        let versionsRoot = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(".nvm/versions/node", isDirectory: true)
+        guard let versions = try? FileManager.default.contentsOfDirectory(
+            at: versionsRoot,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return versions
+            .filter {
+                (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+            .map { $0.appendingPathComponent("bin", isDirectory: true).path }
+    }
+
+    private static func fnmBinDirectories() -> [String] {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let roots = [
+            home.appendingPathComponent(".local/share/fnm/node-versions", isDirectory: true),
+            home.appendingPathComponent("Library/Application Support/fnm/node-versions", isDirectory: true)
+        ]
+        var directories: [String] = []
+        for root in roots {
+            guard let versions = try? FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            directories.append(contentsOf: versions.map {
+                $0.appendingPathComponent("installation/bin", isDirectory: true).path
+            })
         }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        let text = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard process.terminationStatus == 0,
-              let text, !text.isEmpty,
-              FileManager.default.isExecutableFile(atPath: text) else {
-            return nil
-        }
-        return text
+        return directories.sorted { $0.localizedStandardCompare($1) == .orderedDescending }
     }
 
     static func modelLabel(for workingDirectory: String) -> String? {
