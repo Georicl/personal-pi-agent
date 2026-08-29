@@ -72,7 +72,7 @@ Pi 0.84.3 also documents, but the GUI does not yet expose:
 - HTML export
 - `fork`, `clone`, `get_fork_messages`, `get_entries`, and `get_tree`
 
-The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. The Session composer merges native GUI actions with `get_commands` results, so extension commands, prompt templates, and skill commands are available through the slash-command palette.
+The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. It covers model defaults, compaction thresholds, retry timing, message delivery, provider transport, image handling, built-in tools, and resource paths. Each editable scope is loaded independently, and saving reapplies the GUI-owned fields to the latest file contents before writing. The Session composer merges native GUI actions with `get_commands` results, so extension commands, prompt templates, and skill commands are available through the slash-command palette.
 
 The GUI handles these event families today:
 
