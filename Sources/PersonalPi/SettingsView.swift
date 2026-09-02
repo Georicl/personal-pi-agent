@@ -52,10 +52,7 @@ struct SettingsView: View {
     @State private var status = ""
     @State private var hasSourceError = false
     @State private var statusIsError = false
-    @State private var providerCatalogSummary = PiModelsCatalogSummary(providerCount: 0, modelCount: 0)
-    @State private var providerCatalogStatus = ""
-    @State private var providerCatalogHasError = false
-    @State private var showingAddProvider = false
+    @State private var showingProviderLogin = false
 
     private let builtInTools = ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"]
 
@@ -69,8 +66,8 @@ struct SettingsView: View {
         URL(fileURLWithPath: appState.workspace.path).appendingPathComponent(".pi/settings.json")
     }
 
-    private var modelsURL: URL {
-        URL(fileURLWithPath: appState.piRootDirectory).appendingPathComponent("agent/models.json")
+    private var agentDirectory: URL {
+        URL(fileURLWithPath: appState.piRootDirectory).appendingPathComponent("agent", isDirectory: true)
     }
 
     private var selectedURL: URL? {
@@ -97,10 +94,7 @@ struct SettingsView: View {
         }
         .padding(28)
         .frame(maxWidth: 1050, alignment: .leading)
-        .task {
-            prepareScopeAndLoad()
-            loadProviderCatalog()
-        }
+        .task { prepareScopeAndLoad() }
         .onChange(of: selectedScope) { _ in load() }
         .onChange(of: appState.activeWorkingDirectory) { _ in
             if appState.workspaceScope == .global && selectedScope == .project {
@@ -109,8 +103,19 @@ struct SettingsView: View {
                 load()
             }
         }
-        .sheet(isPresented: $showingAddProvider) {
-            AddModelProviderView(modelsURL: modelsURL, onSave: addProvider)
+        .sheet(isPresented: $showingProviderLogin) {
+            ProviderLoginView(
+                agentDirectory: agentDirectory,
+                workingDirectory: URL(
+                    fileURLWithPath: appState.activeWorkingDirectory,
+                    isDirectory: true
+                )
+            ) {
+                status = "Provider authentication updated · Pi runtime reloading"
+                statusIsError = false
+                appState.applySettingsChange()
+                appState.usageStore.refresh()
+            }
                 .environment(\.locale, locale)
         }
     }
@@ -210,52 +215,27 @@ struct SettingsView: View {
 
                 Hairline()
 
-                providerCatalogRow
+                providerLoginRow
             }
         }
     }
 
-    private var providerCatalogRow: some View {
+    private var providerLoginRow: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Custom model providers")
+                Text("Model provider accounts")
                     .font(Theme.sans(12))
                     .foregroundStyle(Theme.secondary)
-                if providerCatalogHasError {
-                    Text(LocalizedStringKey(providerCatalogStatus))
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.danger)
-                } else if !providerCatalogStatus.isEmpty {
-                    Text(LocalizedStringKey(providerCatalogStatus))
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.positive)
-                } else if providerCatalogSummary.providerCount == 0 {
-                    Text("No custom model providers configured")
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.faint)
-                } else {
-                    Text("Custom providers: \(providerCatalogSummary.providerCount) · Models: \(providerCatalogSummary.modelCount)")
-                        .font(Theme.mono(10.5))
-                        .foregroundStyle(Theme.muted)
-                }
-                Text(PiFormat.path(modelsURL.path))
-                    .font(Theme.mono(9.5))
-                    .foregroundStyle(Theme.pale)
-                    .textSelection(.enabled)
+                Text("Choose from the providers and login methods exposed by Pi /login.")
+                    .font(Theme.sans(10.5))
+                    .foregroundStyle(Theme.faint)
             }
             Spacer()
-            Button {
-                loadProviderCatalog()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.borderless)
-            .help("Reload model providers")
-            Button("Add model provider") {
-                showingAddProvider = true
+            Button("Configure provider") {
+                showingProviderLogin = true
             }
             .buttonStyle(.bordered)
-            .accessibilityIdentifier("add-model-provider-button")
+            .accessibilityIdentifier("configure-model-provider-button")
         }
     }
 
@@ -447,28 +427,6 @@ struct SettingsView: View {
     private func prepareScopeAndLoad() {
         selectedScope = appState.workspaceScope == .workspace ? .project : .global
         load()
-    }
-
-    private func loadProviderCatalog() {
-        do {
-            providerCatalogSummary = try PiModelsFile.summary(at: modelsURL)
-            providerCatalogStatus = ""
-            providerCatalogHasError = false
-        } catch {
-            providerCatalogStatus = error.localizedDescription
-            providerCatalogHasError = true
-        }
-    }
-
-    private func addProvider(_ draft: PiCustomProviderDraft) throws {
-        providerCatalogSummary = try PiModelsFile.add(draft, to: modelsURL)
-        providerCatalogHasError = false
-        if draft.credentialSource == .piLogin {
-            providerCatalogStatus = "Provider added · use /login before selecting its model"
-        } else {
-            providerCatalogStatus = "Provider added · Pi runtime reloading"
-        }
-        appState.applySettingsChange()
     }
 
     private func load() {
