@@ -564,7 +564,7 @@ final class AppState: ObservableObject {
         sessionModel = piClient.configuredModelLabel(for: activeWorkingDirectory) ?? sessionModel
         availableCommands = Self.nativeCommands
         guard isPiRunning else {
-            connectionState = .ready
+            resetIdleConnectionState()
             return
         }
         if let sessionId,
@@ -878,13 +878,19 @@ final class AppState: ObservableObject {
         uiRequest = nil
         availableCommands = Self.nativeCommands
         guard isPiRunning else {
-            connectionState = .ready
+            resetIdleConnectionState()
             return
         }
         piClient.stop()
         isPiRunning = false
         connectionState = .ready
         connectPi()
+    }
+
+    private func resetIdleConnectionState() {
+        connectionState = PiLaunchConfiguration.resolvedExecutable() == nil
+            ? .unavailable(PiLaunchConfiguration.missingMessage)
+            : .ready
     }
 
     private func projectKnowledgeDirectory(for projectPath: String) -> String {
