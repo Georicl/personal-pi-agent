@@ -12,6 +12,7 @@ This file records the Pi runtime contract that Personal Pi has actually checked.
 | macOS | 13+ target | `Package.swift` |
 | GUI transport | RPC JSONL over stdin/stdout | Pi RPC documentation and live GUI test |
 | Auth status adapter | `pi auth check --json --no-refresh` | Credential-free JSON checked for DeepSeek and OpenAI Codex |
+| Provider login adapter | Pi SDK `createAgentSessionServices` + `ModelRuntime.login` | Version-local SDK and installed `/login` implementation |
 
 Primary online documentation:
 
@@ -44,6 +45,8 @@ The installed package contains matching version-local documentation under its `d
 Personal Pi launches project RPC sessions with the project root as `cwd` and `--approve`. Global Chat uses `~/.pi/chat`, so it does not load a selected project's `.pi` resources.
 
 Account cards call Pi's `auth check` command without `--credentials`. Swift receives only `status`, `provider`, `authType`, and `reason`; it does not read `auth.json`, API keys, OAuth tokens, or provider-private usage endpoints. Pi 0.84.3 does not expose subscription limits through this command, so the GUI shows credential readiness and leaves daily/weekly limits unspecified.
+
+The Settings provider picker is not a custom-provider form. A bundled local bridge loads the installed Pi SDK for the active cwd, including trusted project provider registrations, and returns the same provider/authentication metadata used by `/login`. Authentication is executed by `ModelRuntime.login`: OAuth and device-code URLs are handed to macOS for automatic opening, while other Pi prompts are rendered in the sheet. Credential values are neither printed nor retained by the GUI.
 
 ## Verified RPC surface
 

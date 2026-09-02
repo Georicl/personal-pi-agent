@@ -50,28 +50,31 @@ final class PersonalPiUITests: XCTestCase {
     }
 
     @MainActor
-    func testAddProviderWorkflowOpensInSimplifiedChinese() {
+    func testNativeProviderLoginPickerOpensInSimplifiedChinese() {
         let app = launchApp(language: "zh-Hans")
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["设置"].waitForExistence(timeout: 4))
         app.buttons["设置"].click()
 
-        let addProvider = app.buttons["add-model-provider-button"]
-        XCTAssertTrue(addProvider.waitForExistence(timeout: 4))
-        if !addProvider.isHittable {
+        let configureProvider = app.buttons["configure-model-provider-button"]
+        XCTAssertTrue(configureProvider.waitForExistence(timeout: 4))
+        if !configureProvider.isHittable {
             app.scrollViews.firstMatch.swipeUp()
         }
-        XCTAssertTrue(addProvider.isHittable)
-        addProvider.click()
+        XCTAssertTrue(configureProvider.isHittable)
+        configureProvider.click()
 
-        let heading = app.staticTexts["add-provider-heading"]
+        let heading = app.staticTexts["provider-login-heading"]
         XCTAssertTrue(heading.waitForExistence(timeout: 4))
-        XCTAssertEqual(heading.value as? String, "添加模型供应商")
-        XCTAssertTrue(app.textFields["provider-id-field"].exists)
-        XCTAssertTrue(app.textFields["provider-base-url-field"].exists)
-        XCTAssertTrue(app.textFields["provider-model-id-field"].exists)
-        XCTAssertTrue(app.buttons["confirm-add-provider-button"].exists)
+        XCTAssertEqual(heading.value as? String, "配置模型供应商")
+
+        let codexProvider = app.buttons["provider-row-openai-codex"]
+        let deepSeekProvider = app.buttons["provider-row-deepseek"]
+        XCTAssertTrue(codexProvider.waitForExistence(timeout: 4))
+        XCTAssertTrue(deepSeekProvider.exists)
+        codexProvider.click()
+        XCTAssertTrue(app.buttons["begin-provider-login-button"].exists)
     }
 
     @MainActor
