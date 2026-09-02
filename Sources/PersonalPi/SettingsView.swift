@@ -20,6 +20,7 @@ private enum PiOptionalSetting: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.locale) private var locale
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.system.rawValue
 
     @State private var selectedScope: PiSettingsScope = .global
@@ -51,6 +52,10 @@ struct SettingsView: View {
     @State private var status = ""
     @State private var hasSourceError = false
     @State private var statusIsError = false
+    @State private var providerCatalogSummary = PiModelsCatalogSummary(providerCount: 0, modelCount: 0)
+    @State private var providerCatalogStatus = ""
+    @State private var providerCatalogHasError = false
+    @State private var showingAddProvider = false
 
     private let builtInTools = ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"]
 
@@ -62,6 +67,10 @@ struct SettingsView: View {
 
     private var projectURL: URL {
         URL(fileURLWithPath: appState.workspace.path).appendingPathComponent(".pi/settings.json")
+    }
+
+    private var modelsURL: URL {
+        URL(fileURLWithPath: appState.piRootDirectory).appendingPathComponent("agent/models.json")
     }
 
     private var selectedURL: URL? {
@@ -88,7 +97,10 @@ struct SettingsView: View {
         }
         .padding(28)
         .frame(maxWidth: 1050, alignment: .leading)
-        .task { prepareScopeAndLoad() }
+        .task {
+            prepareScopeAndLoad()
+            loadProviderCatalog()
+        }
         .onChange(of: selectedScope) { _ in load() }
         .onChange(of: appState.activeWorkingDirectory) { _ in
             if appState.workspaceScope == .global && selectedScope == .project {
@@ -96,6 +108,10 @@ struct SettingsView: View {
             } else {
                 load()
             }
+        }
+        .sheet(isPresented: $showingAddProvider) {
+            AddModelProviderView(modelsURL: modelsURL, onSave: addProvider)
+                .environment(\.locale, locale)
         }
     }
 
@@ -154,42 +170,92 @@ struct SettingsView: View {
     private var modelCard: some View {
         SettingsCard(title: "Model & thinking", subtitle: "Defaults used when Pi starts in this scope.") {
             VStack(spacing: 13) {
-                SettingsTextRow(title: "Provider", placeholder: inheritedPlaceholder("provider"), text: $provider)
-                SettingsTextRow(title: "Model", placeholder: inheritedPlaceholder("model"), text: $model)
+                Group {
+                    SettingsTextRow(title: "Provider", placeholder: inheritedPlaceholder("provider"), text: $provider)
+                    SettingsTextRow(title: "Model", placeholder: inheritedPlaceholder("model"), text: $model)
 
-                if !isReadOnly && !appState.availableModels.isEmpty {
-                    HStack {
-                        Text("Available models")
-                            .font(Theme.sans(12))
-                            .foregroundStyle(Theme.secondary)
-                            .frame(width: 150, alignment: .leading)
-                        Menu("Choose configured model…") {
-                            ForEach(appState.availableModels) { option in
-                                Button(option.identity) {
-                                    provider = option.provider
-                                    model = option.modelId
+                    if !appState.availableModels.isEmpty {
+                        HStack {
+                            Text("Available models")
+                                .font(Theme.sans(12))
+                                .foregroundStyle(Theme.secondary)
+                                .frame(width: 150, alignment: .leading)
+                            Menu("Choose configured model…") {
+                                ForEach(appState.availableModels) { option in
+                                    Button(option.identity) {
+                                        provider = option.provider
+                                        model = option.modelId
+                                    }
                                 }
                             }
-                        }
-                        .menuStyle(.borderlessButton)
-                        Spacer()
-                    }
-                }
-
-                SettingsPickerRow(title: "Thinking level") {
-                    Picker("Thinking level", selection: $thinkingLevel) {
-                        Text(LocalizedStringKey(inheritLabel)).tag("")
-                        ForEach(AppState.thinkingLevels, id: \.self) { level in
-                            Text(LocalizedStringKey(choiceLabel(level))).tag(level)
+                            .menuStyle(.borderlessButton)
+                            Spacer()
                         }
                     }
-                    .labelsHidden()
-                    .frame(width: 210)
-                }
 
-                SettingsTextRow(title: "Pi CLI theme", placeholder: selectedScope == .project ? "Inherit Global theme" : "Pi default (dark)", text: $theme)
+                    SettingsPickerRow(title: "Thinking level") {
+                        Picker("Thinking level", selection: $thinkingLevel) {
+                            Text(LocalizedStringKey(inheritLabel)).tag("")
+                            ForEach(AppState.thinkingLevels, id: \.self) { level in
+                                Text(LocalizedStringKey(choiceLabel(level))).tag(level)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 210)
+                    }
+
+                    SettingsTextRow(title: "Pi CLI theme", placeholder: selectedScope == .project ? "Inherit Global theme" : "Pi default (dark)", text: $theme)
+                }
+                .disabled(isReadOnly)
+
+                Hairline()
+
+                providerCatalogRow
             }
-            .disabled(isReadOnly)
+        }
+    }
+
+    private var providerCatalogRow: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Custom model providers")
+                    .font(Theme.sans(12))
+                    .foregroundStyle(Theme.secondary)
+                if providerCatalogHasError {
+                    Text(LocalizedStringKey(providerCatalogStatus))
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.danger)
+                } else if !providerCatalogStatus.isEmpty {
+                    Text(LocalizedStringKey(providerCatalogStatus))
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.positive)
+                } else if providerCatalogSummary.providerCount == 0 {
+                    Text("No custom model providers configured")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.faint)
+                } else {
+                    Text("Custom providers: \(providerCatalogSummary.providerCount) · Models: \(providerCatalogSummary.modelCount)")
+                        .font(Theme.mono(10.5))
+                        .foregroundStyle(Theme.muted)
+                }
+                Text(PiFormat.path(modelsURL.path))
+                    .font(Theme.mono(9.5))
+                    .foregroundStyle(Theme.pale)
+                    .textSelection(.enabled)
+            }
+            Spacer()
+            Button {
+                loadProviderCatalog()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Reload model providers")
+            Button("Add model provider") {
+                showingAddProvider = true
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("add-model-provider-button")
         }
     }
 
@@ -381,6 +447,28 @@ struct SettingsView: View {
     private func prepareScopeAndLoad() {
         selectedScope = appState.workspaceScope == .workspace ? .project : .global
         load()
+    }
+
+    private func loadProviderCatalog() {
+        do {
+            providerCatalogSummary = try PiModelsFile.summary(at: modelsURL)
+            providerCatalogStatus = ""
+            providerCatalogHasError = false
+        } catch {
+            providerCatalogStatus = error.localizedDescription
+            providerCatalogHasError = true
+        }
+    }
+
+    private func addProvider(_ draft: PiCustomProviderDraft) throws {
+        providerCatalogSummary = try PiModelsFile.add(draft, to: modelsURL)
+        providerCatalogHasError = false
+        if draft.credentialSource == .piLogin {
+            providerCatalogStatus = "Provider added · use /login before selecting its model"
+        } else {
+            providerCatalogStatus = "Provider added · Pi runtime reloading"
+        }
+        appState.applySettingsChange()
     }
 
     private func load() {
