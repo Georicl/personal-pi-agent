@@ -24,7 +24,7 @@ struct OverviewView: View {
             }
 
             VStack(alignment: .leading, spacing: 16) {
-                Text(PiFormat.greeting())
+                Text(LocalizedStringKey(PiFormat.greeting()))
                     .font(Theme.serif(34))
                     .foregroundStyle(Theme.ink)
 
@@ -66,8 +66,11 @@ struct OverviewView: View {
                     )
 
                     HStack(spacing: 14) {
-                        Text(appState.sessionModel)
-                        Text("think: \(appState.thinkingLevel)")
+                        Text(LocalizedStringKey(appState.sessionModel))
+                        HStack(spacing: 3) {
+                            Text("Thinking:")
+                            Text(LocalizedStringKey(appState.thinkingLevel.capitalized))
+                        }
                         Spacer(minLength: 0)
                         Text("↩ to send")
                     }
@@ -221,16 +224,16 @@ struct ProviderUsageCard: View {
                     .font(Theme.sans(12.5, weight: .medium))
                     .foregroundStyle(Theme.ink)
                 Spacer(minLength: 0)
-                Text(statusText)
+                Text(LocalizedStringKey(statusText))
                     .font(Theme.mono(9.5))
                     .foregroundStyle(statusColor)
             }
-            Text(account.headline)
+            Text(LocalizedStringKey(account.headline))
                 .font(Theme.mono(24))
                 .foregroundStyle(Theme.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            Text(account.detail)
+            Text(LocalizedStringKey(account.detail))
                 .font(Theme.mono(10))
                 .foregroundStyle(Theme.dim)
                 .lineLimit(2)
@@ -247,6 +250,7 @@ struct ProviderUsageCard: View {
 }
 
 struct CodexUsageCard: View {
+    @Environment(\.locale) private var locale
     let account: AccountUsage
     @ObservedObject var usageStore: AccountUsageStore
 
@@ -273,7 +277,7 @@ struct CodexUsageCard: View {
                     .font(Theme.sans(12.5, weight: .medium))
                     .foregroundStyle(Theme.ink)
                 Spacer(minLength: 0)
-                Text(statusText)
+                Text(LocalizedStringKey(statusText))
                     .font(Theme.mono(9.5))
                     .foregroundStyle(statusColor)
                 Button {
@@ -302,10 +306,16 @@ struct CodexUsageCard: View {
                 }
             }
 
-            Text(account.detail)
-                .font(Theme.mono(10))
-                .foregroundStyle(Theme.dim)
-                .lineLimit(2)
+            Group {
+                if account.windows.isEmpty {
+                    Text(LocalizedStringKey(account.detail))
+                } else {
+                    localizedResetSummary
+                }
+            }
+            .font(Theme.mono(10))
+            .foregroundStyle(Theme.dim)
+            .lineLimit(2)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
@@ -316,6 +326,32 @@ struct CodexUsageCard: View {
                 .stroke(Theme.line, lineWidth: 1)
         )
     }
+
+    private var localizedResetSummary: Text {
+        account.windows.enumerated().reduce(Text(verbatim: "")) { summary, item in
+            let (index, window) = item
+            let remaining = Int(max(0, 100 - window.usedPercent).rounded())
+            let reset = window.resetsAt.map(localizedResetDate)
+                ?? String(localized: "unknown reset", bundle: .main, locale: locale)
+            let separator = index == 0 ? Text(verbatim: "") : Text(verbatim: "  |  ")
+            return summary
+                + separator
+                + Text(verbatim: window.label)
+                + Text(verbatim: " ")
+                + Text("\(remaining)% remaining")
+                + Text(verbatim: " · ")
+                + Text("resets")
+                + Text(verbatim: " ")
+                + Text(verbatim: reset)
+        }
+    }
+
+    private func localizedResetDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate("MMM d HH:mm")
+        return formatter.string(from: date)
+    }
 }
 
 struct UsageMeter: View {
@@ -325,7 +361,7 @@ struct UsageMeter: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(Theme.mono(10))
                 .foregroundStyle(Theme.muted)
                 .frame(width: 42, alignment: .leading)
@@ -381,7 +417,7 @@ struct SessionUsageCard: View {
 
     private func metric(_ label: String, _ value: String, _ color: Color) -> some View {
         HStack {
-            Text(label).foregroundStyle(Theme.muted)
+            Text(LocalizedStringKey(label)).foregroundStyle(Theme.muted)
             Spacer()
             Text(value).foregroundStyle(color)
         }

@@ -1,0 +1,320 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000001 /* AccountUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000001 /* AccountUsage.swift */; };
+		A00000000000000000000002 /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000002 /* AppLanguage.swift */; };
+		A00000000000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000003 /* AppState.swift */; };
+		A00000000000000000000004 /* KnowledgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000004 /* KnowledgeView.swift */; };
+		A00000000000000000000005 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000005 /* OverviewView.swift */; };
+		A00000000000000000000006 /* PersonalPiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000006 /* PersonalPiApp.swift */; };
+		A00000000000000000000007 /* PiRPCClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000007 /* PiRPCClient.swift */; };
+		A00000000000000000000008 /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000008 /* ProjectsView.swift */; };
+		A00000000000000000000009 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000009 /* RootView.swift */; };
+		A0000000000000000000000A /* RuntimeDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S0000000000000000000000A /* RuntimeDiagnosticsView.swift */; };
+		A0000000000000000000000B /* SessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S0000000000000000000000B /* SessionsView.swift */; };
+		A0000000000000000000000C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S0000000000000000000000C /* SettingsView.swift */; };
+		A0000000000000000000000D /* SlashCommandInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = S0000000000000000000000D /* SlashCommandInput.swift */; };
+		A0000000000000000000000E /* TaskStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = S0000000000000000000000E /* TaskStore.swift */; };
+		A0000000000000000000000F /* TasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S0000000000000000000000F /* TasksView.swift */; };
+		A00000000000000000000010 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000010 /* Theme.swift */; };
+		A00000000000000000000011 /* Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000011 /* Workspace.swift */; };
+		B00000000000000000000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = V00000000000000000000001 /* Localizable.strings */; };
+		C00000000000000000000001 /* SettingsFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000001 /* SettingsFileTests.swift */; };
+		C00000000000000000000002 /* WorkspaceAndLanguageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000002 /* WorkspaceAndLanguageTests.swift */; };
+		C00000000000000000000003 /* TaskStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000003 /* TaskStoreTests.swift */; };
+		D00000000000000000000001 /* PersonalPiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = U00000000000000000000001 /* PersonalPiUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C10000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F10000000000000000000001;
+			remoteInfo = PersonalPi;
+		};
+		D10000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F10000000000000000000001;
+			remoteInfo = PersonalPi;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		P00000000000000000000001 /* PersonalPi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PersonalPi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		P00000000000000000000002 /* PersonalPiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PersonalPiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		P00000000000000000000003 /* PersonalPiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PersonalPiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		S00000000000000000000001 /* AccountUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountUsage.swift; sourceTree = "<group>"; };
+		S00000000000000000000002 /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
+		S00000000000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		S00000000000000000000004 /* KnowledgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeView.swift; sourceTree = "<group>"; };
+		S00000000000000000000005 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
+		S00000000000000000000006 /* PersonalPiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalPiApp.swift; sourceTree = "<group>"; };
+		S00000000000000000000007 /* PiRPCClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiRPCClient.swift; sourceTree = "<group>"; };
+		S00000000000000000000008 /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
+		S00000000000000000000009 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		S0000000000000000000000A /* RuntimeDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeDiagnosticsView.swift; sourceTree = "<group>"; };
+		S0000000000000000000000B /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
+		S0000000000000000000000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		S0000000000000000000000D /* SlashCommandInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandInput.swift; sourceTree = "<group>"; };
+		S0000000000000000000000E /* TaskStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStore.swift; sourceTree = "<group>"; };
+		S0000000000000000000000F /* TasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TasksView.swift; sourceTree = "<group>"; };
+		S00000000000000000000010 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		S00000000000000000000011 /* Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace.swift; sourceTree = "<group>"; };
+		R00000000000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		R00000000000000000000002 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		R00000000000000000000003 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		T00000000000000000000001 /* SettingsFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFileTests.swift; sourceTree = "<group>"; };
+		T00000000000000000000002 /* WorkspaceAndLanguageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceAndLanguageTests.swift; sourceTree = "<group>"; };
+		T00000000000000000000003 /* TaskStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStoreTests.swift; sourceTree = "<group>"; };
+		U00000000000000000000001 /* PersonalPiUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalPiUITests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F20000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		F20000000000000000000002 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		F20000000000000000000003 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		G00000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				G00000000000000000000002 /* Sources */,
+				G00000000000000000000004 /* Resources */,
+				G00000000000000000000005 /* Tests */,
+				G00000000000000000000008 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		G00000000000000000000002 /* Sources */ = {
+			isa = PBXGroup;
+			children = (G00000000000000000000003 /* PersonalPi */);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		G00000000000000000000003 /* PersonalPi */ = {
+			isa = PBXGroup;
+			children = (
+				S00000000000000000000001 /* AccountUsage.swift */,
+				S00000000000000000000002 /* AppLanguage.swift */,
+				S00000000000000000000003 /* AppState.swift */,
+				S00000000000000000000004 /* KnowledgeView.swift */,
+				S00000000000000000000005 /* OverviewView.swift */,
+				S00000000000000000000006 /* PersonalPiApp.swift */,
+				S00000000000000000000007 /* PiRPCClient.swift */,
+				S00000000000000000000008 /* ProjectsView.swift */,
+				S00000000000000000000009 /* RootView.swift */,
+				S0000000000000000000000A /* RuntimeDiagnosticsView.swift */,
+				S0000000000000000000000B /* SessionsView.swift */,
+				S0000000000000000000000C /* SettingsView.swift */,
+				S0000000000000000000000D /* SlashCommandInput.swift */,
+				S0000000000000000000000E /* TaskStore.swift */,
+				S0000000000000000000000F /* TasksView.swift */,
+				S00000000000000000000010 /* Theme.swift */,
+				S00000000000000000000011 /* Workspace.swift */,
+			);
+			path = PersonalPi;
+			sourceTree = "<group>";
+		};
+		G00000000000000000000004 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				R00000000000000000000001 /* Info.plist */,
+				V00000000000000000000001 /* Localizable.strings */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		G00000000000000000000005 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				G00000000000000000000006 /* PersonalPiTests */,
+				G00000000000000000000007 /* PersonalPiUITests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		G00000000000000000000006 /* PersonalPiTests */ = {
+			isa = PBXGroup;
+			children = (
+				T00000000000000000000001 /* SettingsFileTests.swift */,
+				T00000000000000000000002 /* WorkspaceAndLanguageTests.swift */,
+				T00000000000000000000003 /* TaskStoreTests.swift */,
+			);
+			path = PersonalPiTests;
+			sourceTree = "<group>";
+		};
+		G00000000000000000000007 /* PersonalPiUITests */ = {
+			isa = PBXGroup;
+			children = (U00000000000000000000001 /* PersonalPiUITests.swift */);
+			path = PersonalPiUITests;
+			sourceTree = "<group>";
+		};
+		G00000000000000000000008 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				P00000000000000000000001 /* PersonalPi.app */,
+				P00000000000000000000002 /* PersonalPiTests.xctest */,
+				P00000000000000000000003 /* PersonalPiUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F10000000000000000000001 /* PersonalPi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = L10000000000000000000001 /* Build configuration list for PBXNativeTarget "PersonalPi" */;
+			buildPhases = (
+				F30000000000000000000001 /* Sources */,
+				F20000000000000000000001 /* Frameworks */,
+				F40000000000000000000001 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = PersonalPi;
+			productName = PersonalPi;
+			productReference = P00000000000000000000001 /* PersonalPi.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F10000000000000000000002 /* PersonalPiTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = L10000000000000000000002 /* Build configuration list for PBXNativeTarget "PersonalPiTests" */;
+			buildPhases = (
+				F30000000000000000000002 /* Sources */,
+				F20000000000000000000002 /* Frameworks */,
+				F40000000000000000000002 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = (C20000000000000000000001 /* PBXTargetDependency */);
+			name = PersonalPiTests;
+			productName = PersonalPiTests;
+			productReference = P00000000000000000000002 /* PersonalPiTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		F10000000000000000000003 /* PersonalPiUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = L10000000000000000000003 /* Build configuration list for PBXNativeTarget "PersonalPiUITests" */;
+			buildPhases = (
+				F30000000000000000000003 /* Sources */,
+				F20000000000000000000003 /* Frameworks */,
+				F40000000000000000000003 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = (D20000000000000000000001 /* PBXTargetDependency */);
+			name = PersonalPiUITests;
+			productName = PersonalPiUITests;
+			productReference = P00000000000000000000003 /* PersonalPiUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		F00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					F10000000000000000000001 = {CreatedOnToolsVersion = 26.6; };
+					F10000000000000000000002 = {CreatedOnToolsVersion = 26.6; TestTargetID = F10000000000000000000001; };
+					F10000000000000000000003 = {CreatedOnToolsVersion = 26.6; TestTargetID = F10000000000000000000001; };
+				};
+			};
+			buildConfigurationList = L00000000000000000000001 /* Build configuration list for PBXProject "PersonalPi" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base, "zh-Hans");
+			mainGroup = G00000000000000000000001;
+			productRefGroup = G00000000000000000000008 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F10000000000000000000001 /* PersonalPi */,
+				F10000000000000000000002 /* PersonalPiTests */,
+				F10000000000000000000003 /* PersonalPiUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		F40000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000001 /* Localizable.strings in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		F40000000000000000000002 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		F40000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F30000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000001 /* AccountUsage.swift in Sources */,
+				A00000000000000000000002 /* AppLanguage.swift in Sources */,
+				A00000000000000000000003 /* AppState.swift in Sources */,
+				A00000000000000000000004 /* KnowledgeView.swift in Sources */,
+				A00000000000000000000005 /* OverviewView.swift in Sources */,
+				A00000000000000000000006 /* PersonalPiApp.swift in Sources */,
+				A00000000000000000000007 /* PiRPCClient.swift in Sources */,
+				A00000000000000000000008 /* ProjectsView.swift in Sources */,
+				A00000000000000000000009 /* RootView.swift in Sources */,
+				A0000000000000000000000A /* RuntimeDiagnosticsView.swift in Sources */,
+				A0000000000000000000000B /* SessionsView.swift in Sources */,
+				A0000000000000000000000C /* SettingsView.swift in Sources */,
+				A0000000000000000000000D /* SlashCommandInput.swift in Sources */,
+				A0000000000000000000000E /* TaskStore.swift in Sources */,
+				A0000000000000000000000F /* TasksView.swift in Sources */,
+				A00000000000000000000010 /* Theme.swift in Sources */,
+				A00000000000000000000011 /* Workspace.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F30000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000001, C00000000000000000000002, C00000000000000000000003); runOnlyForDeploymentPostprocessing = 0; };
+		F30000000000000000000003 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (D00000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C20000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = F10000000000000000000001 /* PersonalPi */; targetProxy = C10000000000000000000001 /* PBXContainerItemProxy */; };
+		D20000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = F10000000000000000000001 /* PersonalPi */; targetProxy = D10000000000000000000001 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		V00000000000000000000001 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (R00000000000000000000002 /* en */, R00000000000000000000003 /* zh-Hans */);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		X00000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = dwarf; GCC_OPTIMIZATION_LEVEL = 0; MACOSX_DEPLOYMENT_TARGET = 13.0; ONLY_ACTIVE_ARCH = YES; SDKROOT = macosx; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_VERSION = 6.0;}; name = Debug; };
+		X00000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 13.0; SDKROOT = macosx; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 6.0;}; name = Release; };
+		X10000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_HARDENED_RUNTIME = YES; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Resources/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = dev.pi.personal; PRODUCT_NAME = PersonalPi; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_STRICT_CONCURRENCY = complete;}; name = Debug; };
+		X10000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Resources/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = dev.pi.personal; PRODUCT_NAME = PersonalPi; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_STRICT_CONCURRENCY = complete;}; name = Release; };
+		X20000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 13.0; PRODUCT_BUNDLE_IDENTIFIER = dev.pi.personal.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PersonalPi.app/Contents/MacOS/PersonalPi";}; name = Debug; };
+		X20000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 13.0; PRODUCT_BUNDLE_IDENTIFIER = dev.pi.personal.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PersonalPi.app/Contents/MacOS/PersonalPi";}; name = Release; };
+		X30000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 13.0; PRODUCT_BUNDLE_IDENTIFIER = dev.pi.personal.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TEST_TARGET_NAME = PersonalPi;}; name = Debug; };
+		X30000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 13.0; PRODUCT_BUNDLE_IDENTIFIER = dev.pi.personal.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 6.0; TEST_TARGET_NAME = PersonalPi;}; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		L00000000000000000000001 /* Build configuration list for PBXProject "PersonalPi" */ = {isa = XCConfigurationList; buildConfigurations = (X00000000000000000000001 /* Debug */, X00000000000000000000002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		L10000000000000000000001 /* Build configuration list for PBXNativeTarget "PersonalPi" */ = {isa = XCConfigurationList; buildConfigurations = (X10000000000000000000001 /* Debug */, X10000000000000000000002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		L10000000000000000000002 /* Build configuration list for PBXNativeTarget "PersonalPiTests" */ = {isa = XCConfigurationList; buildConfigurations = (X20000000000000000000001 /* Debug */, X20000000000000000000002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		L10000000000000000000003 /* Build configuration list for PBXNativeTarget "PersonalPiUITests" */ = {isa = XCConfigurationList; buildConfigurations = (X30000000000000000000001 /* Debug */, X30000000000000000000002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = F00000000000000000000001 /* Project object */;
+}

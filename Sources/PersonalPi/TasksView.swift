@@ -94,7 +94,8 @@ struct TaskStatCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label.uppercased())
+            Text(LocalizedStringKey(label))
+                .textCase(.uppercase)
                 .font(Theme.mono(9.5))
                 .tracking(1.2)
                 .foregroundStyle(labelColor)
@@ -195,7 +196,7 @@ struct TaskRecordRow: View {
 
                 Spacer(minLength: 0)
 
-                Text(task.state.title)
+                Text(LocalizedStringKey(task.state.title))
                     .font(Theme.mono(10))
                     .foregroundStyle(stateForeground)
                     .padding(.horizontal, 8)

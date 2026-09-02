@@ -536,15 +536,18 @@ enum PiLaunchConfiguration {
     }
 
     static func resolvedExecutable() -> String? {
-        resolvedExecutable(named: "pi", overrideEnvironmentKey: "PERSONAL_PI_EXECUTABLE")
+        guard !PersonalPiRuntimeEnvironment.externalProcessesDisabled else { return nil }
+        return resolvedExecutable(named: "pi", overrideEnvironmentKey: "PERSONAL_PI_EXECUTABLE")
     }
 
     static func resolvedNodeExecutable() -> String? {
-        resolvedExecutable(named: "node", overrideEnvironmentKey: "PERSONAL_PI_NODE_EXECUTABLE")
+        guard !PersonalPiRuntimeEnvironment.externalProcessesDisabled else { return nil }
+        return resolvedExecutable(named: "node", overrideEnvironmentKey: "PERSONAL_PI_NODE_EXECUTABLE")
     }
 
     static func resolvedCodexExecutable() -> String? {
-        resolvedExecutable(named: "codex", overrideEnvironmentKey: "PERSONAL_PI_CODEX_EXECUTABLE")
+        guard !PersonalPiRuntimeEnvironment.externalProcessesDisabled else { return nil }
+        return resolvedExecutable(named: "codex", overrideEnvironmentKey: "PERSONAL_PI_CODEX_EXECUTABLE")
     }
 
     private static func resolvedExecutable(named name: String, overrideEnvironmentKey: String) -> String? {
@@ -632,7 +635,7 @@ enum PiLaunchConfiguration {
     }
 
     static func modelLabel(for workingDirectory: String) -> String? {
-        let global = readSettings(at: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".pi/agent/settings.json"))
+        let global = readSettings(at: PersonalPiRuntimeEnvironment.piRootURL.appendingPathComponent("agent/settings.json"))
         let project = readSettings(at: URL(fileURLWithPath: workingDirectory).appendingPathComponent(".pi/settings.json"))
         let provider = project["defaultProvider"] as? String ?? global["defaultProvider"] as? String
         let model = project["defaultModel"] as? String ?? global["defaultModel"] as? String

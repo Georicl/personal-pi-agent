@@ -403,10 +403,10 @@ struct DiagnosticSectionView: View {
                         .padding(.top, 6)
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 9) {
-                            Text(item.title)
+                            Text(LocalizedStringKey(item.title))
                                 .font(Theme.sans(13, weight: .medium))
                                 .foregroundStyle(Theme.ink)
-                            Text(item.level.label)
+                            Text(LocalizedStringKey(item.level.label))
                                 .font(Theme.mono(8.5, weight: .medium))
                                 .foregroundStyle(item.level.color)
                         }

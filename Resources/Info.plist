@@ -4,12 +4,19 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Personal Pi</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
 	<key>CFBundleExecutable</key>
 	<string>PersonalPi</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.pi.personal</string>
 	<key>CFBundleName</key>
 	<string>Personal Pi</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
+	</array>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -20,5 +27,7 @@
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 </dict>
 </plist>

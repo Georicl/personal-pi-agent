@@ -7,7 +7,12 @@ repo_root="$(cd "$script_dir/.." && pwd)"
 configuration="${1:-debug}"
 
 case "$configuration" in
-  debug|release) ;;
+  debug)
+    xcode_configuration="Debug"
+    ;;
+  release)
+    xcode_configuration="Release"
+    ;;
   *)
     echo "Usage: scripts/build-app.sh [debug|release]" >&2
     exit 2
@@ -15,20 +20,28 @@ case "$configuration" in
 esac
 
 app_dir="$repo_root/Build/PersonalPi.app"
-contents_dir="$app_dir/Contents"
-binary_dir="$contents_dir/MacOS"
-resources_dir="$contents_dir/Resources"
-
-export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-/private/tmp/personal-pi-modulecache}"
+derived_data_dir="$repo_root/.build/xcode-derived"
+built_app="$derived_data_dir/Build/Products/$xcode_configuration/PersonalPi.app"
+host_arch="$(uname -m)"
 
 cd "$repo_root"
-swift build --configuration "$configuration"
-bin_dir="$(swift build --configuration "$configuration" --show-bin-path)"
+xcodebuild \
+  -project "$repo_root/PersonalPi.xcodeproj" \
+  -scheme PersonalPi \
+  -configuration "$xcode_configuration" \
+  -destination "platform=macOS,arch=$host_arch" \
+  -derivedDataPath "$derived_data_dir" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
 
-mkdir -p "$binary_dir" "$resources_dir"
-cp "$repo_root/Resources/Info.plist" "$contents_dir/Info.plist"
-cp "$bin_dir/PersonalPi" "$binary_dir/PersonalPi"
-chmod 755 "$binary_dir/PersonalPi"
+if [[ ! -d "$built_app" ]]; then
+  echo "Xcode build did not produce $built_app" >&2
+  exit 1
+fi
+
+mkdir -p "$repo_root/Build"
+rm -rf "$app_dir"
+ditto "$built_app" "$app_dir"
 
 codesign --force --deep --sign - "$app_dir"
 codesign --verify --deep --strict "$app_dir"

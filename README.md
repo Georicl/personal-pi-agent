@@ -47,10 +47,25 @@ Web/Desktop Interface
 
 ## 开发与兼容性
 
-构建并签名本地 macOS App：
+使用 Xcode 打开正式的 macOS App 工程：
+
+```bash
+open PersonalPi.xcodeproj
+```
+
+工程包含 `PersonalPi`、`PersonalPiTests` 和 `PersonalPiUITests` 三个 target。GUI 可在 Settings 的 Interface language 中选择跟随系统、English 或简体中文。
+
+构建并签名本地 macOS App（产物位于 `Build/PersonalPi.app`）：
 
 ```bash
 scripts/build-app.sh debug
+```
+
+运行 Swift Package 与 Xcode 测试：
+
+```bash
+swift test
+xcodebuild -project PersonalPi.xcodeproj -scheme PersonalPi -destination 'platform=macOS' test
 ```
 
 应用会从当前 `PATH` 和常见用户级安装目录发现 `pi`、`node` 与 `codex`。如需覆盖 Codex CLI 路径，可设置 `PERSONAL_PI_CODEX_EXECUTABLE`。
