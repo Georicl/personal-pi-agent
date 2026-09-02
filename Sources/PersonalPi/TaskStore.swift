@@ -46,8 +46,8 @@ final class PiTaskStore: ObservableObject {
     private let persistenceQueue = DispatchQueue(label: "dev.pi.personal.task-store", qos: .utility)
 
     init(storageURL: URL? = nil) {
-        self.storageURL = storageURL ?? URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".pi/agent/personal-pi-tasks.json")
+        self.storageURL = storageURL ?? PersonalPiRuntimeEnvironment.piRootURL
+            .appendingPathComponent("agent/personal-pi-tasks.json")
         load()
     }
 

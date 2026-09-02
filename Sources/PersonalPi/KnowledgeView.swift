@@ -59,10 +59,10 @@ struct KnowledgeScopeCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(Theme.sans(13.5, weight: .medium))
                     .foregroundStyle(Theme.ink)
-                Text(kicker)
+                Text(LocalizedStringKey(kicker))
                     .font(Theme.sans(12))
                     .foregroundStyle(Theme.faint)
             }

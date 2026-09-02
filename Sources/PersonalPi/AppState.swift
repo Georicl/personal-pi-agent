@@ -227,7 +227,7 @@ final class AppState: ObservableObject {
     let globalKnowledgeDirectory: String
 
     init() {
-        let piRoot = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".pi", isDirectory: true)
+        let piRoot = PersonalPiRuntimeEnvironment.piRootURL
         piRootDirectory = piRoot.path
         globalChatDirectory = piRoot.appendingPathComponent("chat", isDirectory: true).path
         globalKnowledgeDirectory = piRoot.appendingPathComponent("knowledge", isDirectory: true).path
@@ -894,6 +894,7 @@ final class AppState: ObservableObject {
     }
 
     private static func discoverWorkspacePaths() -> [String] {
+        guard !PersonalPiRuntimeEnvironment.isUITesting else { return [] }
         var paths: [String] = []
         let fileManager = FileManager.default
         func appendIfExists(_ raw: String) {

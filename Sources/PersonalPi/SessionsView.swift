@@ -164,7 +164,7 @@ struct FilterChip: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(Theme.mono(10))
                 .foregroundStyle(selected ? .white : Theme.muted)
                 .padding(.horizontal, 7)
@@ -647,7 +647,7 @@ struct ActivityRow: View {
                     .foregroundStyle(activity.state == .running ? Theme.ink : Theme.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Text(stateLabel)
+                Text(LocalizedStringKey(stateLabel))
                     .font(Theme.mono(9.5))
                     .foregroundStyle(stateColor)
             }

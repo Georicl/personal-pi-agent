@@ -60,10 +60,10 @@ enum PiFormat {
         return path
     }
 
-    static func todayLabel(_ date: Date = Date()) -> String {
+    static func todayLabel(_ date: Date = Date(), locale: Locale = .current) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE, MMM d"
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate("EEE MMM d")
         return formatter.string(from: date)
     }
 
@@ -188,7 +188,8 @@ struct MonoLabel: View {
     var weight: Font.Weight = .regular
 
     var body: some View {
-        Text(text.uppercased())
+        Text(LocalizedStringKey(text))
+            .textCase(.uppercase)
             .font(Theme.mono(size, weight: weight))
             .tracking(tracking)
             .foregroundStyle(color)

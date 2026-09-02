@@ -78,7 +78,8 @@ struct ProjectStatCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label.uppercased())
+            Text(LocalizedStringKey(label))
+                .textCase(.uppercase)
                 .font(Theme.mono(9.5))
                 .tracking(1.2)
                 .foregroundStyle(Theme.dim)

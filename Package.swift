@@ -13,6 +13,11 @@ let package = Package(
         .executableTarget(
             name: "PersonalPi",
             path: "Sources/PersonalPi"
+        ),
+        .testTarget(
+            name: "PersonalPiTests",
+            dependencies: ["PersonalPi"],
+            path: "Tests/PersonalPiTests"
         )
     ]
 )

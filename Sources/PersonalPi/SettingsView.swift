@@ -20,6 +20,7 @@ private enum PiOptionalSetting: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.system.rawValue
 
     @State private var selectedScope: PiSettingsScope = .global
     @State private var baseDocument: [String: Any] = [:]
@@ -56,7 +57,7 @@ struct SettingsView: View {
     private var isReadOnly: Bool { selectedScope == .effective }
 
     private var globalURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".pi/agent/settings.json")
+        URL(fileURLWithPath: appState.piRootDirectory).appendingPathComponent("agent/settings.json")
     }
 
     private var projectURL: URL {
@@ -114,11 +115,22 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 13) {
                 Picker("Scope", selection: $selectedScope) {
                     ForEach(scopeChoices) { scope in
-                        Text(scope.rawValue).tag(scope)
+                        Text(LocalizedStringKey(scope.rawValue)).tag(scope)
                     }
                 }
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 420)
+
+                SettingsPickerRow(title: "Interface language") {
+                    Picker("Interface language", selection: $languageRawValue) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(language.titleKey).tag(language.rawValue)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 210)
+                    .accessibilityIdentifier("interface-language-picker")
+                }
 
                 HStack(spacing: 8) {
                     Image(systemName: isReadOnly ? "arrow.triangle.merge" : "doc.text")
@@ -166,9 +178,9 @@ struct SettingsView: View {
 
                 SettingsPickerRow(title: "Thinking level") {
                     Picker("Thinking level", selection: $thinkingLevel) {
-                        Text(inheritLabel).tag("")
+                        Text(LocalizedStringKey(inheritLabel)).tag("")
                         ForEach(AppState.thinkingLevels, id: \.self) { level in
-                            Text(level).tag(level)
+                            Text(LocalizedStringKey(choiceLabel(level))).tag(level)
                         }
                     }
                     .labelsHidden()
@@ -209,7 +221,9 @@ struct SettingsView: View {
     private var toolsCard: some View {
         SettingsCard(title: "Built-in tools", subtitle: "When no override is set, Pi uses its standard defaults or the Global list.") {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle(selectedScope == .project ? "Override Global tool list" : "Set an explicit tool list", isOn: $overridesTools)
+                Toggle(isOn: $overridesTools) {
+                    Text(LocalizedStringKey(selectedScope == .project ? "Override Global tool list" : "Set an explicit tool list"))
+                }
                     .font(Theme.sans(12.5))
                     .disabled(isReadOnly)
 
@@ -239,7 +253,7 @@ struct SettingsView: View {
     private var saveBar: some View {
         HStack(spacing: 12) {
             if !status.isEmpty {
-                Text(status)
+                Text(LocalizedStringKey(status))
                     .font(Theme.mono(10.5))
                     .foregroundStyle(statusIsError ? Theme.danger : Theme.muted)
                     .lineLimit(2)
@@ -254,7 +268,7 @@ struct SettingsView: View {
         .padding(.top, 2)
     }
 
-    private var scopeSubtitle: String {
+    private var scopeSubtitle: LocalizedStringKey {
         switch selectedScope {
         case .global: "Applies to every Pi session unless a project overrides it."
         case .project: "Applies only while \(appState.workspace.name) is the active project."
@@ -281,7 +295,7 @@ struct SettingsView: View {
     private func optionalSettingRow(title: String, selection: Binding<PiOptionalSetting>) -> some View {
         SettingsPickerRow(title: title) {
             Picker(title, selection: selection) {
-                Text(inheritLabel).tag(PiOptionalSetting.inherited)
+                Text(LocalizedStringKey(inheritLabel)).tag(PiOptionalSetting.inherited)
                 Text("Enabled").tag(PiOptionalSetting.enabled)
                 Text("Disabled").tag(PiOptionalSetting.disabled)
             }
@@ -295,9 +309,9 @@ struct SettingsView: View {
     private func choiceRow(title: String, selection: Binding<String>, options: [String]) -> some View {
         SettingsPickerRow(title: title) {
             Picker(title, selection: selection) {
-                Text(inheritLabel).tag("")
+                Text(LocalizedStringKey(inheritLabel)).tag("")
                 ForEach(options, id: \.self) { option in
-                    Text(choiceLabel(option)).tag(option)
+                    Text(LocalizedStringKey(choiceLabel(option))).tag(option)
                 }
             }
             .labelsHidden()
@@ -309,7 +323,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func resourceRow(title: String, text: Binding<String>, example: String) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(Theme.sans(12))
                 .foregroundStyle(Theme.secondary)
                 .frame(width: 150, alignment: .leading)
@@ -526,11 +540,11 @@ struct SettingsView: View {
 }
 
 private struct SettingsCard<Content: View>: View {
-    let title: String
-    let subtitle: String
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
     let content: Content
 
-    init(title: String, subtitle: String, @ViewBuilder content: () -> Content) {
+    init(title: LocalizedStringKey, subtitle: LocalizedStringKey, @ViewBuilder content: () -> Content) {
         self.title = title
         self.subtitle = subtitle
         self.content = content()
@@ -562,11 +576,11 @@ private struct SettingsTextRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(Theme.sans(12))
                 .foregroundStyle(Theme.secondary)
                 .frame(width: 150, alignment: .leading)
-            TextField(placeholder, text: $text)
+            TextField(LocalizedStringKey(placeholder), text: $text)
                 .textFieldStyle(.roundedBorder)
                 .font(Theme.mono(10.5))
                 .frame(maxWidth: 430)
@@ -586,7 +600,7 @@ private struct SettingsPickerRow<Content: View>: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(Theme.sans(12))
                 .foregroundStyle(Theme.secondary)
                 .frame(width: 150, alignment: .leading)
@@ -596,7 +610,7 @@ private struct SettingsPickerRow<Content: View>: View {
     }
 }
 
-private enum PiSettingsFile {
+enum PiSettingsFile {
     static func isOptionalNonnegativeInteger(_ raw: String) -> Bool {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return true }
@@ -656,7 +670,7 @@ private enum PiSettingsFile {
         else { object[key] = values }
     }
 
-    static func setOptionalBool(_ mode: PiOptionalSetting, path: [String], in object: inout [String: Any]) {
+    fileprivate static func setOptionalBool(_ mode: PiOptionalSetting, path: [String], in object: inout [String: Any]) {
         switch mode {
         case .inherited: setValue(nil, path: path, in: &object)
         case .enabled: setValue(true, path: path, in: &object)

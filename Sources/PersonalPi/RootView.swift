@@ -127,7 +127,7 @@ struct ScopeSwitcher: View {
                     )
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(appState.scopeTitle)
+                    Text(LocalizedStringKey(appState.scopeTitle))
                         .font(Theme.sans(13, weight: .medium))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
@@ -322,7 +322,7 @@ struct SidebarRow: View {
                     .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Theme.accent : Theme.pale)
                     .frame(width: 14)
-                Text(section.title)
+                Text(LocalizedStringKey(section.title))
                     .font(Theme.sans(13, weight: isSelected ? .medium : .regular))
                     .foregroundStyle(isSelected ? Theme.ink : Theme.secondary)
                 Spacer(minLength: 0)
@@ -412,7 +412,7 @@ struct ConnectionCard: View {
                     Circle()
                         .fill(appState.connectionState.color)
                         .frame(width: 6, height: 6)
-                    Text(appState.connectionState.label)
+                    Text(LocalizedStringKey(appState.connectionState.label))
                         .font(Theme.sans(12))
                         .foregroundStyle(Theme.ink)
                     Spacer(minLength: 0)
@@ -487,10 +487,11 @@ struct DetailView: View {
 
 struct TopBar: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.locale) private var locale
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(appState.selectedSection.title)
+            Text(LocalizedStringKey(appState.selectedSection.title))
                 .font(Theme.sans(12.5))
                 .foregroundStyle(Theme.muted)
 
@@ -498,7 +499,7 @@ struct TopBar: View {
 
             Spacer(minLength: 0)
 
-            Text(PiFormat.todayLabel())
+            Text(PiFormat.todayLabel(locale: locale))
                 .font(Theme.mono(10.5))
                 .foregroundStyle(Theme.dim)
 
@@ -506,7 +507,7 @@ struct TopBar: View {
                 Circle()
                     .fill(appState.connectionState.color)
                     .frame(width: 5, height: 5)
-                Text(appState.connectionState.label)
+                Text(LocalizedStringKey(appState.connectionState.label))
                     .font(Theme.mono(10.5))
                     .foregroundStyle(Theme.muted)
             }
@@ -529,7 +530,7 @@ struct AgentStatusPill: View {
                 color: appState.isAgentBusy ? Theme.accent : Theme.idle,
                 animated: appState.isAgentBusy
             )
-            Text(appState.agentStatusCaption)
+            Text(LocalizedStringKey(appState.agentStatusCaption))
                 .font(Theme.mono(10.5))
                 .foregroundStyle(appState.isAgentBusy ? Theme.accentInk : Theme.dim)
         }

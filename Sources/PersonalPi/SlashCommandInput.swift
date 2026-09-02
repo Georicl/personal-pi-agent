@@ -4,7 +4,7 @@ import AppKit
 struct SlashCommandInput: View {
     @EnvironmentObject private var appState: AppState
 
-    let placeholder: String
+    let placeholder: LocalizedStringKey
     var maximumLines = 6
     var inputBackground = Theme.panel
     var sendButtonSize: CGFloat = 26
