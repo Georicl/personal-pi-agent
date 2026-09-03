@@ -10,7 +10,7 @@ private enum PiSettingsScope: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-private enum PiOptionalSetting: String, CaseIterable, Identifiable {
+enum PiOptionalSetting: String, CaseIterable, Identifiable {
     case inherited
     case enabled
     case disabled
@@ -51,6 +51,18 @@ struct SettingsView: View {
     @State private var imageAutoResize = PiOptionalSetting.inherited
     @State private var imageBlocking = PiOptionalSetting.inherited
     @State private var skillCommands = PiOptionalSetting.inherited
+    @State private var showingAdvancedRuntime = false
+    @State private var httpProxy = ""
+    @State private var httpIdleTimeoutMs = ""
+    @State private var websocketConnectTimeoutMs = ""
+    @State private var providerTimeoutMs = ""
+    @State private var providerMaxRetries = ""
+    @State private var shellPath = ""
+    @State private var shellCommandPrefix = ""
+    @State private var npmCommand = ""
+    @State private var branchSummaryReserveTokens = ""
+    @State private var branchSummarySkipPrompt = PiOptionalSetting.inherited
+    @State private var anthropicExtraUsageWarning = PiOptionalSetting.inherited
     @State private var overridesTools = false
     @State private var selectedTools = Set<String>()
     @State private var status = ""
@@ -92,6 +104,7 @@ struct SettingsView: View {
             scopeCard
             modelCard
             behaviorCard
+            advancedRuntimeCard
             toolsCard
             saveBar
         }
@@ -539,6 +552,78 @@ struct SettingsView: View {
         }
     }
 
+    private var advancedRuntimeCard: some View {
+        SettingsCard(
+            title: "Advanced runtime",
+            subtitle: "Network, provider, shell and branch-summary settings supported by the installed Pi runtime."
+        ) {
+            DisclosureGroup("Show advanced options", isExpanded: $showingAdvancedRuntime) {
+                VStack(alignment: .leading, spacing: 16) {
+                    advancedSection("Network & provider") {
+                        SettingsTextRow(
+                            title: "HTTP proxy",
+                            placeholder: "Global only · http://127.0.0.1:7890",
+                            text: $httpProxy
+                        )
+                        .disabled(isReadOnly || selectedScope == .project)
+                        Text("Pi reads HTTP proxy from Global settings before project configuration is loaded.")
+                            .font(Theme.sans(9.5))
+                            .foregroundStyle(Theme.faint)
+                            .padding(.leading, 166)
+                        SettingsTextRow(title: "HTTP idle timeout (ms)", placeholder: inheritLabel, text: $httpIdleTimeoutMs)
+                            .disabled(isReadOnly)
+                        SettingsTextRow(title: "WebSocket connect timeout (ms)", placeholder: inheritLabel, text: $websocketConnectTimeoutMs)
+                            .disabled(isReadOnly)
+                        SettingsTextRow(title: "Provider timeout (ms)", placeholder: inheritLabel, text: $providerTimeoutMs)
+                            .disabled(isReadOnly)
+                        SettingsTextRow(title: "Provider maximum retries", placeholder: inheritLabel, text: $providerMaxRetries)
+                            .disabled(isReadOnly)
+                    }
+
+                    advancedSection("Shell & package commands") {
+                        SettingsTextRow(title: "Shell path", placeholder: selectedScope == .project ? "Inherit" : "Pi default shell", text: $shellPath)
+                            .disabled(isReadOnly)
+                        SettingsTextRow(title: "Shell command prefix", placeholder: inheritLabel, text: $shellCommandPrefix)
+                            .disabled(isReadOnly)
+                        SettingsMultilineTextRow(
+                            title: "npm command",
+                            help: "One executable or argument per line, for example npm on the first line.",
+                            text: $npmCommand
+                        )
+                        .disabled(isReadOnly)
+                    }
+
+                    advancedSection("Branch summaries & warnings") {
+                        SettingsTextRow(title: "Branch summary reserve tokens", placeholder: inheritLabel, text: $branchSummaryReserveTokens)
+                            .disabled(isReadOnly)
+                        optionalSettingRow(title: "Skip branch-summary prompt", selection: $branchSummarySkipPrompt)
+                        optionalSettingRow(title: "Anthropic extra-usage warning", selection: $anthropicExtraUsageWarning)
+                    }
+                }
+                .padding(.top, 14)
+            }
+            .font(Theme.sans(11.5, weight: .medium))
+            .foregroundStyle(Theme.secondary)
+            .accessibilityIdentifier("advanced-runtime-disclosure")
+        }
+    }
+
+    @ViewBuilder
+    private func advancedSection<Content: View>(
+        _ title: LocalizedStringKey,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Text(title)
+                .font(Theme.mono(9.5, weight: .medium))
+                .tracking(1.1)
+                .textCase(.uppercase)
+                .foregroundStyle(Theme.dim)
+            content()
+        }
+        .padding(.top, 2)
+    }
+
     private var saveBar: some View {
         HStack(spacing: 12) {
             if !status.isEmpty {
@@ -702,6 +787,18 @@ struct SettingsView: View {
         imageAutoResize = optionalMode(PiSettingsFile.value(in: document, path: ["images", "autoResize"]))
         imageBlocking = optionalMode(PiSettingsFile.value(in: document, path: ["images", "blockImages"]))
         skillCommands = optionalMode(document["enableSkillCommands"])
+        let proxyDocument = selectedScope == .global ? document : globalDocument
+        httpProxy = proxyDocument["httpProxy"] as? String ?? ""
+        httpIdleTimeoutMs = numberString(document["httpIdleTimeoutMs"])
+        websocketConnectTimeoutMs = numberString(document["websocketConnectTimeoutMs"])
+        providerTimeoutMs = numberString(PiSettingsFile.value(in: document, path: ["retry", "provider", "timeoutMs"]))
+        providerMaxRetries = numberString(PiSettingsFile.value(in: document, path: ["retry", "provider", "maxRetries"]))
+        shellPath = document["shellPath"] as? String ?? ""
+        shellCommandPrefix = document["shellCommandPrefix"] as? String ?? ""
+        npmCommand = stringList(document["npmCommand"])
+        branchSummaryReserveTokens = numberString(PiSettingsFile.value(in: document, path: ["branchSummary", "reserveTokens"]))
+        branchSummarySkipPrompt = optionalMode(PiSettingsFile.value(in: document, path: ["branchSummary", "skipPrompt"]))
+        anthropicExtraUsageWarning = optionalMode(PiSettingsFile.value(in: document, path: ["warnings", "anthropicExtraUsage"]))
         if let tools = document["defaultTools"] as? [String] {
             overridesTools = true
             selectedTools = Set(tools)
@@ -723,7 +820,12 @@ struct SettingsView: View {
             ("Minimal thinking budget", thinkingBudgetMinimal),
             ("Low thinking budget", thinkingBudgetLow),
             ("Medium thinking budget", thinkingBudgetMedium),
-            ("High thinking budget", thinkingBudgetHigh)
+            ("High thinking budget", thinkingBudgetHigh),
+            ("HTTP idle timeout", httpIdleTimeoutMs),
+            ("WebSocket connect timeout", websocketConnectTimeoutMs),
+            ("Provider timeout", providerTimeoutMs),
+            ("Provider maximum retries", providerMaxRetries),
+            ("Branch summary reserve tokens", branchSummaryReserveTokens)
         ]
         for (name, value) in integerFields {
             guard PiSettingsFile.isOptionalNonnegativeInteger(value) else {
@@ -767,6 +869,19 @@ struct SettingsView: View {
         PiSettingsFile.setOptionalBool(imageAutoResize, path: ["images", "autoResize"], in: &document)
         PiSettingsFile.setOptionalBool(imageBlocking, path: ["images", "blockImages"], in: &document)
         PiSettingsFile.setOptionalBool(skillCommands, path: ["enableSkillCommands"], in: &document)
+        if selectedScope == .global {
+            PiSettingsFile.setString(httpProxy, key: "httpProxy", in: &document)
+        }
+        PiSettingsFile.setOptionalInt(httpIdleTimeoutMs, path: ["httpIdleTimeoutMs"], in: &document)
+        PiSettingsFile.setOptionalInt(websocketConnectTimeoutMs, path: ["websocketConnectTimeoutMs"], in: &document)
+        PiSettingsFile.setOptionalInt(providerTimeoutMs, path: ["retry", "provider", "timeoutMs"], in: &document)
+        PiSettingsFile.setOptionalInt(providerMaxRetries, path: ["retry", "provider", "maxRetries"], in: &document)
+        PiSettingsFile.setString(shellPath, key: "shellPath", in: &document)
+        PiSettingsFile.setString(shellCommandPrefix, key: "shellCommandPrefix", in: &document)
+        PiSettingsFile.setStringList(npmCommand, key: "npmCommand", in: &document)
+        PiSettingsFile.setOptionalInt(branchSummaryReserveTokens, path: ["branchSummary", "reserveTokens"], in: &document)
+        PiSettingsFile.setOptionalBool(branchSummarySkipPrompt, path: ["branchSummary", "skipPrompt"], in: &document)
+        PiSettingsFile.setOptionalBool(anthropicExtraUsageWarning, path: ["warnings", "anthropicExtraUsage"], in: &document)
         if overridesTools { document["defaultTools"] = builtInTools.filter(selectedTools.contains) }
         else { document.removeValue(forKey: "defaultTools") }
         do {
@@ -887,6 +1002,36 @@ private struct SettingsTextRow: View {
     }
 }
 
+private struct SettingsMultilineTextRow: View {
+    let title: String
+    let help: LocalizedStringKey
+    @Binding var text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Text(LocalizedStringKey(title))
+                .font(Theme.sans(12))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 150, alignment: .leading)
+                .padding(.top, 6)
+            VStack(alignment: .leading, spacing: 5) {
+                TextEditor(text: $text)
+                    .font(Theme.mono(10.5))
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .frame(minHeight: 54, maxHeight: 76)
+                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line, lineWidth: 1))
+                Text(help)
+                    .font(Theme.sans(9.5))
+                    .foregroundStyle(Theme.faint)
+            }
+            .frame(maxWidth: 430)
+            Spacer()
+        }
+    }
+}
+
 private struct SettingsPickerRow<Content: View>: View {
     let title: String
     let content: Content
@@ -977,7 +1122,7 @@ enum PiSettingsFile {
         else { object[key] = values }
     }
 
-    fileprivate static func setOptionalBool(_ mode: PiOptionalSetting, path: [String], in object: inout [String: Any]) {
+    static func setOptionalBool(_ mode: PiOptionalSetting, path: [String], in object: inout [String: Any]) {
         switch mode {
         case .inherited: setValue(nil, path: path, in: &object)
         case .enabled: setValue(true, path: path, in: &object)

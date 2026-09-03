@@ -310,6 +310,29 @@
 "High budget" = "高级别预算";
 "Max" = "最高";
 
+/* Advanced runtime settings */
+"Advanced runtime" = "高级运行环境";
+"Network, provider, shell and branch-summary settings supported by the installed Pi runtime." = "配置当前 Pi 运行环境支持的网络、供应商、Shell 与分支总结选项。";
+"Show advanced options" = "显示高级选项";
+"Network & provider" = "网络与供应商";
+"HTTP proxy" = "HTTP 代理";
+"Global only · http://127.0.0.1:7890" = "仅限全局 · http://127.0.0.1:7890";
+"Pi reads HTTP proxy from Global settings before project configuration is loaded." = "Pi 会在载入项目配置前从全局设置读取 HTTP 代理。";
+"HTTP idle timeout (ms)" = "HTTP 空闲超时（毫秒）";
+"WebSocket connect timeout (ms)" = "WebSocket 连接超时（毫秒）";
+"Provider timeout (ms)" = "供应商请求超时（毫秒）";
+"Provider maximum retries" = "供应商最大重试次数";
+"Shell & package commands" = "Shell 与包命令";
+"Shell path" = "Shell 路径";
+"Pi default shell" = "Pi 默认 Shell";
+"Shell command prefix" = "Shell 命令前缀";
+"npm command" = "npm 命令";
+"One executable or argument per line, for example npm on the first line." = "每行填写一个可执行文件或参数，例如第一行填写 npm。";
+"Branch summaries & warnings" = "分支总结与警告";
+"Branch summary reserve tokens" = "分支总结保留 Token";
+"Skip branch-summary prompt" = "跳过分支总结提示";
+"Anthropic extra-usage warning" = "Anthropic 额外用量警告";
+
 /* Native slash commands */
 "Open Global and Project Pi settings" = "打开全局与项目 Pi 设置";
 "Start a new session" = "开始新会话";
