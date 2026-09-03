@@ -118,6 +118,39 @@ final class PersonalPiUITests: XCTestCase {
     }
 
     @MainActor
+    func testNativeSessionCommandsAppearInComposer() {
+        let app = launchApp(language: "en")
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        let composer = app.textFields["composer-input"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 4))
+        composer.click()
+        composer.typeText("/")
+
+        XCTAssertTrue(app.staticTexts["/tree"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["/fork"].exists)
+        XCTAssertTrue(app.staticTexts["/clone"].exists)
+        XCTAssertTrue(app.staticTexts["/export"].exists)
+    }
+
+    @MainActor
+    func testSessionInformationSheetUsesSimplifiedChinese() {
+        let app = launchApp(language: "zh-Hans")
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        let composer = app.textFields["composer-input"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 4))
+        composer.click()
+        composer.typeText("/session ")
+        composer.typeKey(.return, modifierFlags: [])
+
+        XCTAssertTrue(app.staticTexts["会话信息"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["运行标识、存储位置与当前用量"].exists)
+        XCTAssertTrue(app.staticTexts["名称"].exists)
+        XCTAssertTrue(app.staticTexts["尚未持久化"].exists)
+    }
+
+    @MainActor
     private func launchApp(language: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["PERSONAL_PI_UI_TESTING"] = "1"

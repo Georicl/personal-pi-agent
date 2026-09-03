@@ -93,7 +93,50 @@
 "Rename this session: /name title" = "Rename this session: /name title";
 "Configure provider authentication" = "Configure provider authentication";
 "Remove stored provider authentication" = "Remove stored provider authentication";
+"Compact context: /compact [custom instructions]" = "Compact context: /compact [custom instructions]";
+"Open saved sessions or resume by ID" = "Open saved sessions or resume by ID";
+"Show current session path, ID and usage" = "Show current session path, ID and usage";
+"Inspect and navigate the current session tree" = "Inspect and navigate the current session tree";
+"Fork from an earlier user message" = "Fork from an earlier user message";
+"Clone the active branch into a new session" = "Clone the active branch into a new session";
+"Export the session to HTML" = "Export the session to HTML";
+"Copy the last assistant reply" = "Copy the last assistant reply";
+"Reload Pi extensions, skills, prompts and themes" = "Reload Pi extensions, skills, prompts and themes";
 "No description" = "No description";
+
+/* Session utilities */
+"Session actions" = "Session actions";
+"Session information" = "Session information";
+"Runtime identity, storage and current usage" = "Runtime identity, storage and current usage";
+"Name" = "Name";
+"Scope" = "Scope";
+"Working directory" = "Working directory";
+"Session ID" = "Session ID";
+"Session file" = "Session file";
+"Messages" = "Messages";
+"Tokens" = "Tokens";
+"Cost" = "Cost";
+"Not persisted yet" = "Not persisted yet";
+"Show session file" = "Show session file";
+"Close" = "Close";
+"Copy" = "Copy";
+"Session tree" = "Session tree";
+"Select an earlier node to continue from that branch" = "Select an earlier node to continue from that branch";
+"Loading session tree…" = "Loading session tree…";
+"This session has no saved entries yet." = "This session has no saved entries yet.";
+"Summarize the branch being left" = "Summarize the branch being left";
+"Optional summary instructions" = "Optional summary instructions";
+"Navigate here" = "Navigate here";
+"Fork session" = "Fork session";
+"Start a new session before an earlier user message" = "Start a new session before an earlier user message";
+"Loading user messages…" = "Loading user messages…";
+"No user message is available to fork from." = "No user message is available to fork from.";
+"Fork from message" = "Fork from message";
+"Clone active branch" = "Clone active branch";
+"Export HTML" = "Export HTML";
+"Copy last reply" = "Copy last reply";
+"Reload Pi resources" = "Reload Pi resources";
+"CURRENT" = "CURRENT";
 
 /* Pi packages and resources */
 "Packages" = "Packages";
