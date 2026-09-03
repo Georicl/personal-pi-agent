@@ -19,6 +19,20 @@ struct RootView: View {
             appState.usageStore.refresh()
             appState.refreshSavedSessions()
         }
+        .sheet(item: $appState.providerAccountRequest) { request in
+            ProviderLoginView(
+                agentDirectory: URL(fileURLWithPath: appState.piRootDirectory)
+                    .appendingPathComponent("agent", isDirectory: true),
+                workingDirectory: URL(
+                    fileURLWithPath: appState.activeWorkingDirectory,
+                    isDirectory: true
+                ),
+                request: request
+            ) {
+                appState.applySettingsChange()
+                appState.usageStore.refresh()
+            }
+        }
     }
 }
 

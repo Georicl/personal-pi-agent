@@ -6,13 +6,14 @@ import Testing
 struct ProviderAuthTests {
     @Test("Provider list decoding preserves Pi auth methods and status")
     func decodesProviderList() throws {
-        let data = Data(#"{"type":"providers","providers":[{"id":"openai-codex","name":"OpenAI Codex","configured":true,"configuredAuthType":"oauth","methods":[{"type":"oauth","name":"OpenAI (ChatGPT Plus/Pro)","interactive":true,"subscription":true}]},{"id":"deepseek","name":"DeepSeek","configured":false,"methods":[{"type":"api_key","name":"DeepSeek API key","interactive":true,"subscription":false}]}]}"#.utf8)
+        let data = Data(#"{"type":"providers","providers":[{"id":"openai-codex","name":"OpenAI Codex","configured":true,"configuredAuthType":"oauth","storedAuthType":"oauth","methods":[{"type":"oauth","name":"OpenAI (ChatGPT Plus/Pro)","interactive":true,"subscription":true}]},{"id":"deepseek","name":"DeepSeek","configured":false,"methods":[{"type":"api_key","name":"DeepSeek API key","interactive":true,"subscription":false}]}]}"#.utf8)
 
         let providers = try PiProviderAuthBridge.decodeProviderList(data)
 
         #expect(providers.count == 2)
         #expect(providers[0].id == "openai-codex")
         #expect(providers[0].configuredAuthType == .oauth)
+        #expect(providers[0].storedAuthType == .oauth)
         #expect(providers[0].methods.first?.subscription == true)
         #expect(providers[1].methods.first?.type == .apiKey)
     }
@@ -24,6 +25,7 @@ struct ProviderAuthTests {
             name: "Mixed Provider",
             configured: false,
             configuredAuthType: nil,
+            storedAuthType: nil,
             methods: [
                 PiProviderLoginMethod(
                     type: .apiKey,
@@ -57,6 +59,13 @@ struct ProviderAuthTests {
         let data = Data(#"{"type":"result","success":false,"error":"Pi SDK unavailable"}"#.utf8)
 
         #expect(PiProviderAuthBridge.decodeFailureMessage(data) == "Pi SDK unavailable")
+    }
+
+    @Test("Successful one-shot bridge results are recognized")
+    func decodesSuccessfulBridgeResult() {
+        let data = Data(#"{"type":"result","success":true,"providerId":"openai-codex"}"#.utf8)
+
+        #expect(PiProviderAuthBridge.decodeSuccessfulResult(data))
     }
 
     @Test("OAuth authorization events preserve the URL for automatic opening")

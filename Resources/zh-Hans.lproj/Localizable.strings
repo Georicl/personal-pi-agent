@@ -230,7 +230,6 @@
 "WebSocket cached" = "WebSocket 缓存";
 
 /* Native Pi provider login */
-"Configure model provider" = "配置模型供应商";
 "Providers and login methods are loaded from the installed Pi runtime, just like /login." = "供应商与登录方式由当前安装的 Pi 运行环境提供，与 /login 一致。";
 "Search providers" = "搜索供应商";
 "Clear search" = "清除搜索";
@@ -257,7 +256,6 @@
 "Done" = "完成";
 "Subscription / OAuth" = "订阅账户 / OAuth";
 "OAuth" = "OAuth";
-"Configured" = "已配置";
 "Starting Pi authentication…" = "正在启动 Pi 认证…";
 "Preparing authorization page…" = "正在准备授权页面…";
 "Waiting for Pi to request credentials…" = "正在等待 Pi 请求凭据…";
@@ -275,5 +273,50 @@
 "Pi returned an invalid provider list" = "Pi 返回了无效的供应商列表";
 "Model provider accounts" = "模型供应商账户";
 "Choose from the providers and login methods exposed by Pi /login." = "从 Pi /login 提供的供应商与登录方式中选择。";
-"Configure provider" = "配置供应商";
-"Provider authentication updated · Pi runtime reloading" = "供应商认证已更新 · 正在重新载入 Pi 运行环境";
+"Manage accounts" = "管理账户";
+"Log in to model provider" = "登录模型供应商";
+"Log out of model provider" = "退出模型供应商";
+"Only credentials stored by Pi are listed. External environment configuration is unchanged." = "这里只列出 Pi 保存的凭据；环境变量和外部配置不会改变。";
+"No stored provider credentials" = "没有由 Pi 保存的供应商凭据";
+"Pi will remove this provider's stored credential" = "Pi 将移除此供应商已保存的凭据";
+"Log out" = "退出登录";
+"Log out of provider?" = "退出该供应商？";
+"Pi will remove the stored credential. Environment variables and external configuration are unchanged." = "Pi 将移除已保存的凭据；环境变量和外部配置不会改变。";
+"Logout is handled by Pi and removes only its stored credential." = "退出登录由 Pi 处理，并且只移除 Pi 保存的凭据。";
+"Removing stored provider credential…" = "正在移除供应商凭据…";
+"Provider logged out" = "已退出供应商登录";
+"Refreshing provider model catalog…" = "正在刷新该供应商的模型目录…";
+"Authentication succeeded; model catalog refresh will be retried by the Pi runtime." = "认证已成功；Pi 运行环境将重新尝试刷新模型目录。";
+"Stored credential" = "已保存凭据";
+"Configured externally" = "外部配置";
+"Refresh models" = "刷新模型";
+"Refreshing model catalog…" = "正在刷新模型目录…";
+"Model catalog refreshed · Pi runtime reloading" = "模型目录已刷新 · 正在重新载入 Pi 运行环境";
+
+/* Model management */
+"Model cycling" = "模型循环范围";
+"Clear" = "清除";
+"Advanced model patterns" = "高级模型匹配模式";
+"One provider/model ID or Pi glob pattern per line." = "每行填写一个供应商/模型 ID 或 Pi glob 匹配模式。";
+"Per-model thinking" = "按模型设置思考级别";
+"Choose model…" = "选择模型…";
+"No per-model overrides" = "没有按模型设置的覆盖项";
+"%lld per-model overrides" = "%lld 个按模型设置的覆盖项";
+"%lld models or patterns" = "%lld 个模型或匹配模式";
+"Advanced thinking budgets" = "高级思考预算";
+"Minimal budget" = "最少级别预算";
+"Low budget" = "低级别预算";
+"Medium budget" = "中级别预算";
+"High budget" = "高级别预算";
+"Max" = "最高";
+
+/* Native slash commands */
+"Open Global and Project Pi settings" = "打开全局与项目 Pi 设置";
+"Start a new session" = "开始新会话";
+"Compact the current session context" = "压缩当前会话上下文";
+"Switch model: /model provider/model" = "切换模型：/model 供应商/模型";
+"Set reasoning level: /thinking high" = "设置思考级别：/thinking high";
+"Rename this session: /name title" = "重命名会话：/name 标题";
+"Configure provider authentication" = "配置供应商认证";
+"Remove stored provider authentication" = "移除已保存的供应商认证";
+"No description" = "没有说明";

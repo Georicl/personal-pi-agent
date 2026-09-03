@@ -22,6 +22,7 @@ struct PiLoginProvider: Codable, Hashable, Identifiable, Sendable {
     let name: String
     let configured: Bool
     let configuredAuthType: PiProviderAuthType?
+    let storedAuthType: PiProviderAuthType?
     let methods: [PiProviderLoginMethod]
 
     var preferredMethod: PiProviderLoginMethod? {
@@ -181,6 +182,35 @@ enum PiProviderAuthBridge {
         ))
     }
 
+    static func logoutProvider(
+        agentDirectory: URL,
+        workingDirectory: URL,
+        providerID: String,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
+    ) {
+        runOneShot(
+            mode: "logout",
+            arguments: [providerID],
+            agentDirectory: agentDirectory,
+            workingDirectory: workingDirectory,
+            completion: completion
+        )
+    }
+
+    static func refreshModelCatalog(
+        agentDirectory: URL,
+        workingDirectory: URL,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
+    ) {
+        runOneShot(
+            mode: "refresh_models",
+            arguments: [],
+            agentDirectory: agentDirectory,
+            workingDirectory: workingDirectory,
+            completion: completion
+        )
+    }
+
     static func decodeProviderList(_ data: Data) throws -> [PiLoginProvider] {
         let decoder = JSONDecoder()
         for line in data.split(separator: 0x0A).reversed() where !line.isEmpty {
@@ -227,6 +257,20 @@ enum PiProviderAuthBridge {
         return nil
     }
 
+    static func decodeSuccessfulResult(_ data: Data) -> Bool {
+        let decoder = JSONDecoder()
+        for line in data.split(separator: 0x0A).reversed() where !line.isEmpty {
+            guard let envelope = try? decoder.decode(
+                PiProviderAuthBridgeEnvelope.self,
+                from: Data(line)
+            ) else { continue }
+            if envelope.type == "result" {
+                return envelope.success == true
+            }
+        }
+        return false
+    }
+
     static var uiTestProviders: [PiLoginProvider] {
         [
             PiLoginProvider(
@@ -234,6 +278,7 @@ enum PiProviderAuthBridge {
                 name: "OpenAI Codex",
                 configured: true,
                 configuredAuthType: .oauth,
+                storedAuthType: .oauth,
                 methods: [
                     PiProviderLoginMethod(
                         type: .oauth,
@@ -249,6 +294,7 @@ enum PiProviderAuthBridge {
                 name: "DeepSeek",
                 configured: true,
                 configuredAuthType: .apiKey,
+                storedAuthType: .apiKey,
                 methods: [
                     PiProviderLoginMethod(
                         type: .apiKey,
@@ -264,6 +310,7 @@ enum PiProviderAuthBridge {
                 name: "Anthropic",
                 configured: false,
                 configuredAuthType: nil,
+                storedAuthType: nil,
                 methods: [
                     PiProviderLoginMethod(
                         type: .oauth,
@@ -316,6 +363,70 @@ enum PiProviderAuthBridge {
         var environment = PiLaunchConfiguration.processEnvironment()
         environment["PI_CODING_AGENT_DIR"] = configuration.agentDirectory.path
         return environment
+    }
+
+    private static func runOneShot(
+        mode: String,
+        arguments: [String],
+        agentDirectory: URL,
+        workingDirectory: URL,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
+    ) {
+        if PersonalPiRuntimeEnvironment.isUITesting {
+            completion(.success(()))
+            return
+        }
+
+        let configuration: PiProviderAuthBridgeConfiguration
+        do {
+            configuration = try makeConfiguration(
+                agentDirectory: agentDirectory,
+                workingDirectory: workingDirectory
+            )
+        } catch {
+            completion(.failure(error))
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let process = Process()
+            let output = Pipe()
+            let error = Pipe()
+            process.executableURL = URL(fileURLWithPath: configuration.nodeExecutable)
+            process.arguments = [
+                configuration.scriptURL.path,
+                mode,
+                configuration.piExecutable,
+                configuration.workingDirectory.path
+            ] + arguments
+            process.currentDirectoryURL = FileManager.default.temporaryDirectory
+            process.environment = environment(for: configuration)
+            process.standardOutput = output
+            process.standardError = error
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch {
+                completion(.failure(PiProviderAuthBridgeError.launchFailed(error.localizedDescription)))
+                return
+            }
+
+            let outputData = output.fileHandleForReading.readDataToEndOfFile()
+            if decodeSuccessfulResult(outputData) {
+                completion(.success(()))
+                return
+            }
+            let stderr = String(
+                data: error.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            )?.trimmingCharacters(in: .whitespacesAndNewlines)
+            completion(.failure(PiProviderAuthBridgeError.bridgeFailed(
+                decodeFailureMessage(outputData)
+                    ?? stderr?.nilIfEmpty
+                    ?? PiProviderAuthBridgeError.invalidResponse.localizedDescription
+            )))
+        }
     }
 }
 

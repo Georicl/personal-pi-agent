@@ -26,10 +26,43 @@ struct PiModelOption: Identifiable, Sendable, Hashable {
     let provider: String
     let modelId: String
     let name: String
+    let reasoning: Bool
+    let supportedThinkingLevels: [String]
 
     var identity: String { "\(provider)/\(modelId)" }
     var displayName: String { name.isEmpty ? identity : name }
     var id: String { identity }
+
+    static func thinkingLevels(
+        reasoning: Bool,
+        thinkingLevelMap: [String: Any]?
+    ) -> [String] {
+        guard reasoning else { return ["off"] }
+        return ["off", "minimal", "low", "medium", "high", "xhigh", "max"].filter { level in
+            let isExplicitlyDisabled = thinkingLevelMap?[level] is NSNull
+            if isExplicitlyDisabled { return false }
+            if level == "xhigh" || level == "max" {
+                return thinkingLevelMap?.keys.contains(level) == true
+            }
+            return true
+        }
+    }
+
+    static func decode(_ object: [String: Any]) -> PiModelOption? {
+        guard let provider = object["provider"] as? String,
+              let id = object["id"] as? String else { return nil }
+        let reasoning = object["reasoning"] as? Bool ?? false
+        return PiModelOption(
+            provider: provider,
+            modelId: id,
+            name: object["name"] as? String ?? "",
+            reasoning: reasoning,
+            supportedThinkingLevels: thinkingLevels(
+                reasoning: reasoning,
+                thinkingLevelMap: object["thinkingLevelMap"] as? [String: Any]
+            )
+        )
+    }
 }
 
 final class PiRPCClient: NSObject, @unchecked Sendable {
@@ -264,15 +297,20 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
                 completion([])
                 return
             }
-            completion(models.compactMap { model in
-                guard let provider = model["provider"] as? String,
-                      let id = model["id"] as? String else { return nil }
-                return PiModelOption(
-                    provider: provider,
-                    modelId: id,
-                    name: model["name"] as? String ?? ""
-                )
-            })
+            completion(models.compactMap(PiModelOption.decode))
+        }
+    }
+
+    func requestAvailableThinkingLevels(completion: @escaping ([String]) -> Void) {
+        request(type: "get_available_thinking_levels") { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any],
+                  let levels = data["levels"] as? [String],
+                  !levels.isEmpty else {
+                completion(["off"])
+                return
+            }
+            completion(levels)
         }
     }
 

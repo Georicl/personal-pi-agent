@@ -50,7 +50,7 @@ async function createPiRuntime(sdkEntry, workingDirectory) {
   return services.modelRuntime;
 }
 
-function serializeProvider(runtime, provider) {
+function serializeProvider(runtime, provider, storedCredentials) {
   const methods = [];
   if (provider.auth.oauth) {
     methods.push({
@@ -80,6 +80,7 @@ function serializeProvider(runtime, provider) {
         ? "oauth"
         : "api_key"
       : undefined,
+    storedAuthType: storedCredentials.get(provider.id),
     methods,
   };
 }
@@ -185,6 +186,25 @@ async function runLogin(runtime, providerId, authType) {
 
   try {
     await runtime.login(providerId, authType, interaction);
+    interaction.notify({ type: "progress", message: "Refreshing provider model catalog…" });
+    try {
+      const refresh = await runtime.refresh({
+        providers: [providerId],
+        allowNetwork: true,
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (refresh.aborted || refresh.errors.size > 0) {
+        interaction.notify({
+          type: "info",
+          message: "Authentication succeeded; model catalog refresh will be retried by the Pi runtime.",
+        });
+      }
+    } catch {
+      interaction.notify({
+        type: "info",
+        message: "Authentication succeeded; model catalog refresh will be retried by the Pi runtime.",
+      });
+    }
     emit({ type: "result", success: true, providerId, authType });
   } catch (error) {
     const message = controller.signal.aborted
@@ -202,16 +222,20 @@ async function runLogin(runtime, providerId, authType) {
 async function main() {
   const [mode, piExecutable, workingDirectory, providerId, authType] = process.argv.slice(2);
   if (!mode || !piExecutable || !workingDirectory) {
-    throw new Error("Usage: pi-auth-bridge.mjs <list|login> <pi-executable> <cwd> [provider] [auth-type]");
+    throw new Error("Usage: pi-auth-bridge.mjs <list|login|logout|refresh_models> <pi-executable> <cwd> [provider] [auth-type]");
   }
 
   const sdkEntry = resolveSdkEntry(piExecutable);
   const runtime = await createPiRuntime(sdkEntry, workingDirectory);
 
   if (mode === "list") {
+    const storedCredentials = new Map(
+      (await runtime.listCredentials({ signal: AbortSignal.timeout(15_000) }))
+        .map((credential) => [credential.providerId, credential.type]),
+    );
     const providers = runtime
       .getProviders()
-      .map((provider) => serializeProvider(runtime, provider))
+      .map((provider) => serializeProvider(runtime, provider, storedCredentials))
       .filter((provider) => provider.methods.length > 0)
       .sort((left, right) => left.name.localeCompare(right.name));
     emit({ type: "providers", providers });
@@ -223,6 +247,35 @@ async function main() {
       throw new Error("Login requires a provider ID and auth type");
     }
     await runLogin(runtime, providerId, authType);
+    return;
+  }
+
+  if (mode === "logout") {
+    if (!providerId) {
+      throw new Error("Logout requires a provider ID");
+    }
+    await runtime.logout(providerId, { signal: AbortSignal.timeout(15_000) });
+    emit({ type: "result", success: true, providerId });
+    return;
+  }
+
+  if (mode === "refresh_models") {
+    const result = await runtime.refresh({
+      allowNetwork: true,
+      force: true,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (result.aborted) {
+      throw new Error("Model catalog refresh timed out");
+    }
+    if (result.errors.size > 0) {
+      const details = Array.from(
+        result.errors,
+        ([provider, error]) => `${provider}: ${error.message}`,
+      ).join("; ");
+      throw new Error(`Could not refresh model catalogs: ${details}`);
+    }
+    emit({ type: "result", success: true });
     return;
   }
 
