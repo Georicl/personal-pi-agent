@@ -31,6 +31,9 @@ Rules:
 - The Swift GUI does not invent login providers. It asks the installed Pi runtime for the same provider and authentication-method catalog used by `/login`.
 - Provider authentication is delegated to Pi's native model runtime. OAuth URLs are opened by the GUI when Pi emits them; API-key values exist only in the secure input long enough to answer Pi's local prompt and are not logged or retained by the GUI.
 - Logout delegates to `ModelRuntime.logout` and removes only Pi's stored credential. Environment variables and ambient provider configuration remain unchanged.
+- Package and resource management delegates to Pi's `SettingsManager` and `DefaultPackageManager`. Global packages use `~/.pi/agent/settings.json`; project packages and resource overrides use `<project>/.pi/settings.json` and `<project>/.pi/` managed storage.
+- Package listing is read-only and skips missing-package installation. Explicit Install, Remove, Update, resource-toggle, and path-save actions are the only package-page operations that mutate Pi state.
+- Project resource controls preserve Pi's `inherit`, explicit load, and explicit unload semantics, including delta overrides for resources inherited from Global packages.
 - Provider readiness comes from `pi auth check --provider <id> --json --no-refresh`; the GUI never requests `--credentials`.
 - Global Chat always runs with `~/.pi/chat` as cwd.
 - Global knowledge is an external source; it is retrieved on demand rather than injected wholesale into every prompt.

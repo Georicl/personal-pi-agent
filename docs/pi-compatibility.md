@@ -39,6 +39,7 @@ The installed package contains matching version-local documentation under its `d
 | Prompt templates | `~/.pi/agent/prompts/*.md` | `.pi/prompts/*.md` | Project templates require trust; auto-discovery is non-recursive |
 | Extensions | `~/.pi/agent/extensions/` | `.pi/extensions/` | TypeScript loads through jiti; project extensions require trust |
 | Themes | `~/.pi/agent/themes/` | `.pi/themes/` | Project themes require trust |
+| Packages | `~/.pi/agent/npm/` and Global Git package storage | `.pi/npm/` and Project Git package storage | npm, Git, URL and local sources; project entries override matching Global entries |
 | Sessions | `~/.pi/agent/sessions/` by default | Grouped by session cwd | JSONL tree, configurable with `sessionDir` |
 | Trust decisions | `~/.pi/agent/trust.json` | Canonical project path | Trust controls project resource loading, not tool execution isolation |
 
@@ -49,6 +50,8 @@ Account cards call Pi's `auth check` command without `--credentials`. Swift rece
 The Settings provider picker is not a custom-provider form. A bundled local bridge loads the installed Pi SDK for the active cwd, including trusted project provider registrations, and returns the same provider/authentication metadata used by `/login`. Authentication is executed by `ModelRuntime.login`: OAuth and device-code URLs are handed to macOS for automatic opening, while other Pi prompts are rendered in the sheet. Credential values are neither printed nor retained by the GUI.
 
 The same adapter lists stored credential metadata through `listCredentials`, removes selected stored credentials with `ModelRuntime.logout`, and refreshes model catalogs with `ModelRuntime.refresh`. A successful login refreshes that provider's catalog, and Settings also provides an explicit full refresh. `/login [provider]` and `/logout [provider]` are GUI-native slash commands because Pi RPC intentionally does not execute built-in TUI commands.
+
+The Packages & Resources page uses the installed Pi SDK's `SettingsManager` and `DefaultPackageManager`, matching `pi list`, `pi install`, `pi remove`, `pi update --extensions`, and the resource-filter behavior of `pi config`. Snapshot refreshes call `resolve(() => "skip")`, so merely opening the page never installs a missing package. Project resource overrides use Pi's package delta and `+` / `-` / `!` path semantics. Package code is reloaded only after an explicit mutation completes.
 
 ## Verified RPC surface
 
@@ -74,11 +77,12 @@ Pi 0.84.3 also documents, but the GUI does not yet expose:
 
 - steering and follow-up queues
 - model and thinking cycling commands
+- Pi CLI self-update (`pi update --self`); the GUI manages packages and model catalogs but does not replace its own bundled/runtime updater
 - standalone bash execution and cancellation
 - HTML export
 - `fork`, `clone`, `get_fork_messages`, `get_entries`, and `get_tree`
 
-The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. It covers model defaults, `enabledModels`, `modelThinkingLevels`, `thinkingBudgets`, compaction thresholds, retry timing, message delivery, provider transport, image handling, built-in tools, and resource paths. Model thinking choices are derived from the full model metadata returned by Pi. Each editable scope is loaded independently, and saving reapplies the GUI-owned fields to the latest file contents before writing. The Session composer merges native GUI actions with `get_commands` results, so GUI-native commands, extension commands, prompt templates, and skill commands are available through the slash-command palette.
+The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. It covers model defaults, `enabledModels`, `modelThinkingLevels`, `thinkingBudgets`, compaction thresholds, retry timing, message delivery, provider transport, image handling, and built-in tools. The Packages & Resources page owns package entries and the `extensions`, `skills`, `prompts`, and `themes` path arrays. Model thinking choices are derived from the full model metadata returned by Pi. Each editable scope is loaded independently, and saving reapplies the GUI-owned fields to the latest file contents before writing. The Session composer merges native GUI actions with `get_commands` results, so GUI-native commands, extension commands, prompt templates, and skill commands are available through the slash-command palette.
 
 The GUI handles these event families today:
 

@@ -31,6 +31,7 @@ final class PersonalPiUITests: XCTestCase {
         XCTAssertTrue(app.popUpButtons["default-provider-picker"].exists)
         XCTAssertTrue(app.popUpButtons["default-model-picker"].exists)
         XCTAssertTrue(app.buttons["enabled-models-menu"].exists)
+        XCTAssertTrue(app.buttons["包与资源"].exists)
         let overviewExists = app.buttons["总览"].exists
         XCTAssertTrue(overviewExists)
     }
@@ -48,8 +49,25 @@ final class PersonalPiUITests: XCTestCase {
         XCTAssertTrue(headingExists)
         let languageExists = app.staticTexts["Interface language"].exists
         XCTAssertTrue(languageExists)
+        XCTAssertTrue(app.buttons["Packages"].exists)
         let overviewExists = app.buttons["Overview"].exists
         XCTAssertTrue(overviewExists)
+    }
+
+    @MainActor
+    func testPackagesAndResourcesPageUsesPiSnapshot() {
+        let app = launchApp(language: "zh-Hans")
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        let packages = app.buttons["包与资源"]
+        XCTAssertTrue(packages.waitForExistence(timeout: 4))
+        packages.click()
+
+        XCTAssertTrue(app.staticTexts["packages-heading"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.textFields["package-source-input"].exists)
+        XCTAssertTrue(app.buttons["install-package-button"].exists)
+        XCTAssertTrue(app.buttons["refresh-packages-button"].exists)
+        XCTAssertTrue(app.buttons["save-resource-paths-button"].exists)
     }
 
     @MainActor

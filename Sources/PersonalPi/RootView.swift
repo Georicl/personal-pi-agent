@@ -476,6 +476,10 @@ struct DetailView: View {
                 ScrollView(showsIndicators: false) {
                     KnowledgeView()
                 }
+            case .packages:
+                ScrollView(showsIndicators: false) {
+                    PackagesView()
+                }
             case .projects:
                 ScrollView(showsIndicators: false) {
                     ProjectsView()
