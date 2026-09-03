@@ -10,6 +10,7 @@ struct PiStreamEvent: Sendable {
     let toolDetail: String?
     let toolIsError: Bool?
     let usage: SessionUsage?
+    let figureArtifact: FigureArtifact?
 }
 
 struct PiSessionState: Sendable {
@@ -658,7 +659,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         (response["success"] as? Bool) == true
     }
 
-    private static func parseEvent(_ object: [String: Any]) -> PiStreamEvent? {
+    static func parseEvent(_ object: [String: Any]) -> PiStreamEvent? {
         guard let type = object["type"] as? String else { return nil }
 
         var delta: String?
@@ -668,6 +669,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         var toolDetail: String?
         var toolIsError: Bool?
         var role: String?
+        var figureArtifact: FigureArtifact?
 
         if let assistantEvent = object["assistantMessageEvent"] as? [String: Any] {
             let assistantEventType = assistantEvent["type"] as? String
@@ -709,6 +711,9 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
             toolIsError = object["isError"] as? Bool
             if let result = object["result"] as? [String: Any] {
                 toolDetail = parseContent(result["content"])
+                if let details = result["details"] as? [String: Any] {
+                    figureArtifact = FigureArtifact.decode(details["personalPiFigureArtifact"])
+                }
             }
         }
 
@@ -721,7 +726,8 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
             toolCallId: toolCallId,
             toolDetail: toolDetail,
             toolIsError: toolIsError,
-            usage: parseUsage(object["usage"])
+            usage: parseUsage(object["usage"]),
+            figureArtifact: figureArtifact
         )
     }
 
@@ -790,6 +796,12 @@ enum PiLaunchConfiguration {
         if let runtimeExtensionURL {
             arguments.append(contentsOf: ["--extension", runtimeExtensionURL.path])
         }
+        if let scientificFigureExtensionURL {
+            arguments.append(contentsOf: ["--extension", scientificFigureExtensionURL.path])
+        }
+        if let scientificFigureSkillURL {
+            arguments.append(contentsOf: ["--skill", scientificFigureSkillURL.path])
+        }
         return arguments
     }
 
@@ -798,6 +810,34 @@ enum PiLaunchConfiguration {
         let development = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("Resources/personal-pi-runtime-extension.js")
         return bundled ?? (FileManager.default.fileExists(atPath: development.path) ? development : nil)
+    }
+
+    static var scientificFigureResourceURL: URL? {
+        let bundled = Bundle.main.resourceURL?
+            .appendingPathComponent("ScientificFigure", isDirectory: true)
+        let development = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Resources/ScientificFigure", isDirectory: true)
+        for candidate in [bundled, development].compactMap({ $0 }) {
+            let required = [
+                candidate.appendingPathComponent("extension.js"),
+                candidate.appendingPathComponent("runner.py"),
+                candidate.appendingPathComponent("pyproject.toml"),
+                candidate.appendingPathComponent("uv.lock"),
+                candidate.appendingPathComponent("skill/SKILL.md"),
+            ]
+            if required.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    static var scientificFigureExtensionURL: URL? {
+        scientificFigureResourceURL?.appendingPathComponent("extension.js")
+    }
+
+    static var scientificFigureSkillURL: URL? {
+        scientificFigureResourceURL?.appendingPathComponent("skill/SKILL.md")
     }
 
     static func resolvedExecutable() -> String? {
@@ -813,6 +853,11 @@ enum PiLaunchConfiguration {
     static func resolvedCodexExecutable() -> String? {
         guard !PersonalPiRuntimeEnvironment.externalProcessesDisabled else { return nil }
         return resolvedExecutable(named: "codex", overrideEnvironmentKey: "PERSONAL_PI_CODEX_EXECUTABLE")
+    }
+
+    static func resolvedUvExecutable() -> String? {
+        guard !PersonalPiRuntimeEnvironment.externalProcessesDisabled else { return nil }
+        return resolvedExecutable(named: "uv", overrideEnvironmentKey: "PERSONAL_PI_UV_EXECUTABLE")
     }
 
     private static func resolvedExecutable(named name: String, overrideEnvironmentKey: String) -> String? {

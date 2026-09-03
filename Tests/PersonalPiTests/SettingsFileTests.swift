@@ -104,6 +104,8 @@ struct SettingsFileTests {
         PiSettingsFile.setStringList("pnpm\n--silent", key: "npmCommand", in: &document)
         PiSettingsFile.setOptionalBool(.enabled, path: ["branchSummary", "skipPrompt"], in: &document)
         PiSettingsFile.setOptionalBool(.disabled, path: ["warnings", "anthropicExtraUsage"], in: &document)
+        PiSettingsFile.setValue("/opt/project/.venv/bin/python", path: ["scientificFigure", "pythonPath"], in: &document)
+        PiSettingsFile.setOptionalBool(.disabled, path: ["scientificFigure", "keepWorkFiles"], in: &document)
 
         #expect(document["httpProxy"] as? String == "http://127.0.0.1:7890")
         #expect((document["httpIdleTimeoutMs"] as? NSNumber)?.intValue == 45000)
@@ -113,6 +115,8 @@ struct SettingsFileTests {
         #expect(document["npmCommand"] as? [String] == ["pnpm", "--silent"])
         #expect(PiSettingsFile.value(in: document, path: ["branchSummary", "skipPrompt"]) as? Bool == true)
         #expect(PiSettingsFile.value(in: document, path: ["warnings", "anthropicExtraUsage"]) as? Bool == false)
+        #expect(PiSettingsFile.value(in: document, path: ["scientificFigure", "pythonPath"]) as? String == "/opt/project/.venv/bin/python")
+        #expect(PiSettingsFile.value(in: document, path: ["scientificFigure", "keepWorkFiles"]) as? Bool == false)
         #expect(document["futureSetting"] as? Bool == true)
     }
 }

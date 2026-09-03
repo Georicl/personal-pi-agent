@@ -64,6 +64,8 @@ struct SettingsView: View {
     @State private var branchSummaryReserveTokens = ""
     @State private var branchSummarySkipPrompt = PiOptionalSetting.inherited
     @State private var anthropicExtraUsageWarning = PiOptionalSetting.inherited
+    @State private var scientificFigurePythonPath = ""
+    @State private var scientificFigureKeepWorkFiles = PiOptionalSetting.inherited
     @State private var overridesTools = false
     @State private var selectedTools = Set<String>()
     @State private var status = ""
@@ -556,10 +558,27 @@ struct SettingsView: View {
     private var advancedRuntimeCard: some View {
         SettingsCard(
             title: "Advanced runtime",
-            subtitle: "Network, provider, session, shell and branch-summary settings supported by the installed Pi runtime."
+            subtitle: "Scientific figures, network, provider, session, shell and branch-summary settings."
         ) {
             DisclosureGroup("Show advanced options", isExpanded: $showingAdvancedRuntime) {
                 VStack(alignment: .leading, spacing: 16) {
+                    advancedSection("Scientific figures") {
+                        SettingsTextRow(
+                            title: "Python executable override",
+                            placeholder: selectedScope == .project ? "Inherit managed uv environment" : "Managed uv environment",
+                            text: $scientificFigurePythonPath
+                        )
+                        .disabled(isReadOnly)
+                        optionalSettingRow(
+                            title: "Keep figure work files",
+                            selection: $scientificFigureKeepWorkFiles
+                        )
+                        Text("By default Personal Pi keeps only PNG, TIFF and PDF outputs. Source code, requests, validation JSON and logs are retained only when explicitly enabled.")
+                            .font(Theme.sans(9.5))
+                            .foregroundStyle(Theme.faint)
+                            .padding(.leading, 166)
+                    }
+
                     advancedSection("Network & provider") {
                         SettingsTextRow(
                             title: "HTTP proxy",
@@ -820,6 +839,14 @@ struct SettingsView: View {
         branchSummaryReserveTokens = numberString(PiSettingsFile.value(in: document, path: ["branchSummary", "reserveTokens"]))
         branchSummarySkipPrompt = optionalMode(PiSettingsFile.value(in: document, path: ["branchSummary", "skipPrompt"]))
         anthropicExtraUsageWarning = optionalMode(PiSettingsFile.value(in: document, path: ["warnings", "anthropicExtraUsage"]))
+        scientificFigurePythonPath = PiSettingsFile.value(
+            in: document,
+            path: ["scientificFigure", "pythonPath"]
+        ) as? String ?? ""
+        scientificFigureKeepWorkFiles = optionalMode(PiSettingsFile.value(
+            in: document,
+            path: ["scientificFigure", "keepWorkFiles"]
+        ))
         if let tools = document["defaultTools"] as? [String] {
             overridesTools = true
             selectedTools = Set(tools)
@@ -904,6 +931,18 @@ struct SettingsView: View {
         PiSettingsFile.setOptionalInt(branchSummaryReserveTokens, path: ["branchSummary", "reserveTokens"], in: &document)
         PiSettingsFile.setOptionalBool(branchSummarySkipPrompt, path: ["branchSummary", "skipPrompt"], in: &document)
         PiSettingsFile.setOptionalBool(anthropicExtraUsageWarning, path: ["warnings", "anthropicExtraUsage"], in: &document)
+        let figurePythonPath = scientificFigurePythonPath
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        PiSettingsFile.setValue(
+            figurePythonPath.isEmpty ? nil : figurePythonPath,
+            path: ["scientificFigure", "pythonPath"],
+            in: &document
+        )
+        PiSettingsFile.setOptionalBool(
+            scientificFigureKeepWorkFiles,
+            path: ["scientificFigure", "keepWorkFiles"],
+            in: &document
+        )
         if overridesTools { document["defaultTools"] = builtInTools.filter(selectedTools.contains) }
         else { document.removeValue(forKey: "defaultTools") }
         do {
@@ -1157,7 +1196,7 @@ enum PiSettingsFile {
         setValue(value.isEmpty ? nil : Int(value), path: path, in: &object)
     }
 
-    private static func setValue(_ value: Any?, path: [String], in object: inout [String: Any]) {
+    static func setValue(_ value: Any?, path: [String], in object: inout [String: Any]) {
         guard let first = path.first else { return }
         if path.count == 1 {
             if let value { object[first] = value }

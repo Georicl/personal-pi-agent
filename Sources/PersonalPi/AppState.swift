@@ -247,6 +247,7 @@ final class AppState: ObservableObject {
     @Published private(set) var workspaces: [PiWorkspace]
     @Published var sessionProjectFilter: String?
     @Published var providerAccountRequest: PiProviderAccountRequest?
+    @Published var isArtifactSidebarVisible = false
 
     private var pendingPrompt: String?
     private var pendingNewSession = false
@@ -259,12 +260,18 @@ final class AppState: ObservableObject {
     let piClient = PiRPCClient()
     let usageStore = AccountUsageStore()
     let taskStore = PiTaskStore()
+    let figureArtifactStore: FigureArtifactStore
     let piRootDirectory: String
     let globalChatDirectory: String
     let globalKnowledgeDirectory: String
 
     init() {
         let piRoot = PersonalPiRuntimeEnvironment.piRootURL
+        figureArtifactStore = FigureArtifactStore(
+            storageURL: piRoot
+                .appendingPathComponent("agent", isDirectory: true)
+                .appendingPathComponent("personal-pi-figure-artifacts.json")
+        )
         piRootDirectory = piRoot.path
         globalChatDirectory = piRoot.appendingPathComponent("chat", isDirectory: true).path
         globalKnowledgeDirectory = piRoot.appendingPathComponent("knowledge", isDirectory: true).path
@@ -285,6 +292,7 @@ final class AppState: ObservableObject {
             currentProject = workspace.name
             currentProjectPath = workspace.path
         }
+        figureArtifactStore.selectLatest(sessionId: nil, cwd: currentProjectPath)
 
         if PiLaunchConfiguration.resolvedExecutable() == nil {
             connectionState = .unavailable(PiLaunchConfiguration.missingMessage)
@@ -416,6 +424,10 @@ final class AppState: ObservableObject {
                     self.sessionName = "New session"
                     self.sessionFile = nil
                     self.sessionMessageCount = 0
+                    self.figureArtifactStore.selectLatest(
+                        sessionId: nil,
+                        cwd: self.activeWorkingDirectory
+                    )
                     self.agentStatus = "Ready"
                     self.reloadSession()
                     self.refreshSavedSessions()
@@ -481,6 +493,10 @@ final class AppState: ObservableObject {
                 if success {
                     self.sessionName = session.title
                     self.sessionId = session.id
+                    self.figureArtifactStore.selectLatest(
+                        sessionId: session.id,
+                        cwd: session.cwd
+                    )
                     self.activeTaskId = self.taskStore.taskId(for: session.id)
                     self.messages = []
                     self.activities = []
@@ -752,6 +768,10 @@ final class AppState: ObservableObject {
             Task { @MainActor in
                 guard let self, let state else { return }
                 self.sessionId = state.sessionId
+                self.figureArtifactStore.selectLatest(
+                    sessionId: state.sessionId,
+                    cwd: self.activeWorkingDirectory
+                )
                 self.sessionFile = state.sessionFile
                 self.sessionMessageCount = state.messageCount
                 if let sessionId = state.sessionId {
@@ -1087,6 +1107,7 @@ final class AppState: ObservableObject {
         currentProject = workspace.name
         currentProjectPath = workspace.path
         sessionProjectFilter = nil
+        figureArtifactStore.selectLatest(sessionId: nil, cwd: selectedWorkspace.path)
         restartPiForScope()
         refreshSavedSessions()
     }
@@ -1096,6 +1117,7 @@ final class AppState: ObservableObject {
         workspaceScope = .global
         currentProject = "Global Chat"
         sessionProjectFilter = nil
+        figureArtifactStore.selectLatest(sessionId: nil, cwd: globalChatDirectory)
         restartPiForScope()
     }
 
@@ -1349,6 +1371,10 @@ final class AppState: ObservableObject {
                 detail: event.toolDetail ?? (event.toolIsError == true ? "Tool failed" : "Completed"),
                 state: event.toolIsError == true ? .failed : .completed
             )
+            if let artifact = event.figureArtifact {
+                figureArtifactStore.upsert(artifact)
+                isArtifactSidebarVisible = true
+            }
             agentStatus = event.toolIsError == true ? "Tool failed" : "Processing result…"
         case "compaction_start":
             agentStatus = "Compacting…"

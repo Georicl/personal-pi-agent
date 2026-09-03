@@ -11,6 +11,7 @@ This file records the Pi runtime contract that Personal Pi has actually checked.
 | Node.js | `25.2.1` | Local Finder-launch and RPC test |
 | macOS | 13+ target | `Package.swift` |
 | GUI transport | RPC JSONL over stdin/stdout | Pi RPC documentation and live GUI test |
+| Scientific Python environment | uv lock/sync | Locked runner smoke test |
 | Auth status adapter | `pi auth check --json --no-refresh` | Credential-free JSON checked for DeepSeek and OpenAI Codex |
 | Provider login adapter | Pi SDK `createAgentSessionServices` + `ModelRuntime.login` | Version-local SDK and installed `/login` implementation |
 
@@ -55,6 +56,8 @@ The GUI supplies the remaining session-oriented slash commands itself. Tree insp
 
 The Packages & Resources page uses the installed Pi SDK's `SettingsManager` and `DefaultPackageManager`, matching `pi list`, `pi install`, `pi remove`, `pi update --extensions`, and the resource-filter behavior of `pi config`. Snapshot refreshes call `resolve(() => "skip")`, so merely opening the page never installs a missing package. Project resource overrides use Pi's package delta and `+` / `-` / `!` path semantics. Package code is reloaded only after an explicit mutation completes.
 
+The app explicitly loads the bundled Scientific Figure extension and skill on every Pi RPC launch. Pi 0.84.3 preserves tool `details` on `tool_execution_end`, allowing the extension to send a typed `personalPiFigureArtifact` manifest without encoding file paths in assistant prose. Extension `ctx.ui.confirm` is used for the mandatory statistical-method confirmation. When `ctx.model.input` advertises image support, the tool may also return its PNG preview for the agent's visual revision loop. The locked Python runtime and GUI artifact contract are documented in `docs/scientific-figure.md`.
+
 ## Verified RPC surface
 
 Personal Pi currently uses:
@@ -89,7 +92,7 @@ Pi 0.84.3 also documents, but the GUI does not yet expose:
 - standalone bash execution and cancellation
 - `get_entries`
 
-The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. It covers model defaults, `enabledModels`, `modelThinkingLevels`, `thinkingBudgets`, compaction thresholds, retry timing, message delivery, provider transport, image handling, and built-in tools. Its Advanced Runtime card covers `httpProxy`, `httpIdleTimeoutMs`, `websocketConnectTimeoutMs`, provider retry timeout/count, `sessionDir`, `shellPath`, `shellCommandPrefix`, `npmCommand`, branch-summary settings, and the Anthropic extra-usage warning. `httpProxy` is Global-only because Pi reads it before project settings are applied. The session catalog mirrors Pi's Global/Project merge and `PI_CODING_AGENT_SESSION_DIR` precedence, resolves relative custom paths from each runtime cwd, and scans both the default session tree and unique effective custom roots. The Packages & Resources page owns package entries and the `extensions`, `skills`, `prompts`, and `themes` path arrays. Model thinking choices are derived from the full model metadata returned by Pi. Each editable scope is loaded independently, and saving reapplies the GUI-owned fields to the latest file contents before writing. The Session composer merges native GUI actions with `get_commands` results, so GUI-native commands, extension commands, prompt templates, and skill commands are available through the slash-command palette.
+The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. It covers model defaults, `enabledModels`, `modelThinkingLevels`, `thinkingBudgets`, compaction thresholds, retry timing, message delivery, provider transport, image handling, and built-in tools. Its Advanced Runtime card covers `httpProxy`, `httpIdleTimeoutMs`, `websocketConnectTimeoutMs`, provider retry timeout/count, `sessionDir`, `shellPath`, `shellCommandPrefix`, `npmCommand`, branch-summary settings, the Anthropic extra-usage warning, and the Personal Pi-owned nested `scientificFigure` settings. `httpProxy` is Global-only because Pi reads it before project settings are applied. The session catalog mirrors Pi's Global/Project merge and `PI_CODING_AGENT_SESSION_DIR` precedence, resolves relative custom paths from each runtime cwd, and scans both the default session tree and unique effective custom roots. The Packages & Resources page owns package entries and the `extensions`, `skills`, `prompts`, and `themes` path arrays. Model thinking choices are derived from the full model metadata returned by Pi. Each editable scope is loaded independently, and saving reapplies the GUI-owned fields to the latest file contents before writing. The Session composer merges native GUI actions with `get_commands` results, so GUI-native commands, extension commands, prompt templates, and skill commands are available through the slash-command palette.
 
 The GUI handles these event families today:
 
