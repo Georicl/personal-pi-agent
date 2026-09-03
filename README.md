@@ -1,91 +1,216 @@
 # Personal Pi Agent
 
-这是个人深度定制 Pi Agent 的开发工作区。
+Personal Pi 是一个以 [Pi Coding Agent](https://pi.dev/) 为运行时的原生 macOS 桌面客户端。它保留 Pi 的 Agent 循环、工具调用、会话树、上下文压缩、Skills、Extensions 与 Packages，同时提供项目切换、会话总览、任务状态、账户状态和图形化配置。
 
-## 当前目标
+当前版本定位为 **GUI 基础能力完成版**：已经可以作为日常 Pi 桌面外壳使用，后续开发重点转向学术工作流、个人知识库和可视化产物。
 
-以 Pi Agent Runtime 为基础，逐步构建一个服务于个人编程、资料阅读、学术研究、知识库维护、计划执行和浏览器操作的个人工作系统。
+## 系统要求
 
-## 设计原则
+- macOS 13 或更高版本。
+- 已安装 Node.js，以及能够正常运行的 `pi` 命令。
+- 使用源码构建时需要 Xcode。
 
-- 复用 Pi 的 Agent Runtime、工具调用、会话、分支和上下文压缩能力。
-- 用 Skills 描述工作方法，用 Extensions 提供工具和动作，用本地数据库维护长期知识与任务状态。
-- 知识库不直接全部注入上下文，而是通过检索、来源和引用按需提供给 Agent。
-- 不额外构建文件或命令操作权限层；需要用户输入的业务步骤由任务状态标记为 Waiting。
-- 先完成可验证的最小闭环，再逐步增加外部服务和复杂自动化。
+安装当前兼容的 Pi CLI：
 
-## 当前作用域
-
-- Project：一个目录就是一个项目，包含 Git 状态、项目会话、`AGENTS.md`、`.pi` 配置和项目知识库。
-- Global Chat：不绑定项目，工作目录为 `~/.pi/chat`，只提供普通对话和临时文件空间。
-- Global Knowledge：`~/.pi/knowledge`。
-- Project Knowledge：`<project>/.pi/knowledge`。
-- Task State：`~/.pi/agent/personal-pi-tasks.json`，记录 Submitted、Running、Waiting、Finished 和未读完成状态。
-- Settings：在 GUI 中分别编辑全局 `~/.pi/agent/settings.json` 和项目 `.pi/settings.json`，查看合并后的 Effective 配置，并管理默认模型、模型循环范围、按模型思考等级、思考预算、压缩、重试、消息投递、传输、图像与工具选项。折叠的 Advanced Runtime 区域覆盖网络与供应商超时、HTTP 代理、会话目录、Shell/npm 命令、分支总结和警告配置；会话总览会同步扫描 Pi 默认目录与所有已配置的有效 `sessionDir`。模型账户入口直接读取当前 Pi `/login` 暴露的供应商与登录方式，支持 Pi 原生登录、退出登录和模型目录刷新；OAuth 会自动打开授权页，API Key 通过临时安全输入交给 Pi 保存，Swift 不直接读取或解析 `auth.json`。
-- Slash Commands：Overview 和 Session 共用命令输入组件；输入 `/` 可发现并滚动浏览 GUI 命令、Pi Extensions、Prompt Templates 和 Skills 命令。GUI 原生命令包括模型与账户管理，以及 `/resume`、`/session`、`/tree`、`/fork`、`/clone`、`/export`、`/copy`、`/reload` 和带自定义要求的 `/compact`。会话工具栏也提供对应的可点击操作。
-- Account Status：provider readiness 通过 Pi 的无凭据 `auth check` 读取；Codex 限额通过本机 Codex App Server 的 `account/rateLimits/read` 读取真实窗口。Swift 不读取 API key 或 OAuth token。
-- Packages & Resources：独立页面整合 Pi 原生包管理，支持 Global/Project 安装、移除、单包或全部更新，并展示包提供的 Extensions、Skills、Prompt Templates、Themes。资源可以按作用域启用、禁用或继承，同时可管理额外本地资源路径。
-
-## 计划中的层次
-
-```text
-Personal Knowledge Base
-        ↓
-Workflow and Task Layer
-        ↓
-Pi Agent Runtime
-        ↓
-Web/Desktop Interface
+```bash
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+pi --version
 ```
 
-## 起步顺序
+本仓库当前验证基线为 Pi `0.84.3`。升级 Pi 后应重新运行兼容性检查，详见 [Pi 兼容性记录](docs/pi-compatibility.md)。
 
-1. 配置全局和项目级上下文、Skills、Prompt Templates。
-2. 建立项目注册表、知识检索和任务状态模型。
-3. 实现代码、资料阅读、研究和报告工作流。
-4. 接入网络搜索、浏览器、Obsidian、Zotero 等外部能力。
-5. 构建个人网页工作台。
+## 构建与启动
 
-## 开发与兼容性
-
-使用 Xcode 打开正式的 macOS App 工程：
+使用 Xcode 打开工程：
 
 ```bash
 open PersonalPi.xcodeproj
 ```
 
-工程包含 `PersonalPi`、`PersonalPiTests` 和 `PersonalPiUITests` 三个 target。GUI 可在 Settings 的 Interface language 中选择跟随系统、English 或简体中文。
-
-构建并签名本地 macOS App（产物位于 `Build/PersonalPi.app`）：
+或直接构建并签名本地 App：
 
 ```bash
 scripts/build-app.sh debug
+open Build/PersonalPi.app
 ```
 
-运行 Swift Package 与 Xcode 测试：
+Release 构建：
+
+```bash
+scripts/build-app.sh release
+```
+
+应用会从当前 `PATH`、Homebrew、nvm、fnm、Volta、asdf、pnpm、Bun 等常见用户目录寻找 `pi`、`node` 和 `codex`，不会写死用户名或 Node 版本。
+
+## 第一次使用
+
+1. 启动 Personal Pi，确认左下角显示“Pi CLI ready / Pi CLI 已就绪”。
+2. 在左上角作用域菜单中选择 **Global Chat**，或者创建、添加一个 Project。
+3. 打开 **Settings → Model provider accounts**，选择 Pi `/login` 实际支持的供应商并完成登录。
+4. 在 Settings 中选择默认模型和思考等级。
+5. 回到 Overview 或 Sessions，输入消息开始会话。
+
+Global Chat 的工作目录为 `~/.pi/chat`。Project 模式以所选项目根目录作为 Pi 的 `cwd`，并自动加载该项目允许的 `.pi` 配置与资源。
+
+## 页面与主要操作
+
+| 页面 | 用途 | 当前能力 |
+|---|---|---|
+| Overview | 当前作用域入口 | 新会话、发送消息、账户状态、当前会话用量、最近会话 |
+| Sessions | 会话总览与对话 | 恢复、切换、筛选、停止、压缩、会话信息、树导航、Fork、Clone、HTML 导出、复制回复、资源重载 |
+| Knowledge | 知识目录入口 | 查看 Global/Project 知识文件数量并在 Finder 中打开目录；尚未实现检索数据库 |
+| Packages | Pi 包与资源管理 | Global/Project 安装、移除、更新 Packages；启用或禁用 Extensions、Skills、Prompt Templates、Themes |
+| Projects | 项目总览 | 创建或添加项目、查看 Git 分支、修改数量、会话数量并快速切换 |
+| Tasks | 任务状态 | 按 Submitted、Running、Waiting、Finished 展示；同一 Pi Session 持续更新同一任务 |
+| Diagnostics | 环境诊断 | 检查 Pi、Node、Codex、全局目录、项目配置和资源加载条件 |
+| Settings | Pi 原生配置 | Global、Project、Effective 三种视图；模型、思考、压缩、重试、消息投递、图像、工具和高级运行环境设置 |
+
+## Project 与 Global Chat
+
+### Project
+
+- 一个目录就是一个 Project。
+- 左侧 Project 卡片显示当前 Git 分支、工作区修改数量和 Pi 会话数量。
+- Pi 使用项目根目录启动，因此项目级 `AGENTS.md`、`.pi/settings.json`、Skills、Extensions、Prompts 和 Themes 会按 Pi 规则加载。
+- 切换 Project 时，当前 Pi RPC 进程会重启；正在生成的任务会标记为被项目切换中断。
+
+### Global Chat
+
+- 不绑定任何项目，工作目录固定为当前用户的 `~/.pi/chat`。
+- 适合普通问答和临时文件，不显示项目 Git 信息。
+- 只提供 Global Settings、Global Packages 和 Global Knowledge。
+
+## 会话与斜杠命令
+
+会话由 Pi 以 JSONL 树保存。Personal Pi 默认扫描 `~/.pi/agent/sessions/`，同时读取 Global 和各 Project 实际生效的 `sessionDir`。相对 `sessionDir` 以对应 Pi 工作目录为基准解析，重复目录和重叠文件会去重。
+
+在 Overview 或 Sessions 输入 `/` 可以打开命令面板。GUI 原生命令包括：
+
+| 命令 | 作用 |
+|---|---|
+| `/settings` | 打开 Settings |
+| `/new` | 新建会话 |
+| `/resume [ID或路径]` | 打开 Sessions，或恢复指定会话 |
+| `/session` | 查看会话名称、ID、路径和用量 |
+| `/name <名称>` | 重命名当前会话 |
+| `/compact [要求]` | 压缩上下文，可附加自定义总结要求 |
+| `/tree` | 查看并切换当前会话树分支 |
+| `/fork [条目ID]` | 从指定用户消息创建新会话分支 |
+| `/clone` | 将当前活动分支克隆为新会话 |
+| `/export [路径]` | 导出当前会话为 HTML |
+| `/copy` | 复制最近一条助手回复 |
+| `/model <provider/model>` | 切换模型；不带参数时打开 Settings |
+| `/thinking <level>` | 切换思考等级 |
+| `/login [provider]` | 打开 Pi 原生供应商登录流程 |
+| `/logout [provider]` | 移除 Pi 保存的供应商凭据 |
+| `/reload` | 重新加载 Extensions、Skills、Prompts 和 Themes |
+
+Pi 返回的 Extension commands、Prompt Templates 和 `/skill:*` 命令也会合并到同一命令面板。以 `__personal_pi_` 开头的内部桥接命令不会显示给用户。
+
+## Settings
+
+Settings 提供三个作用域：
+
+- **Global**：写入 `~/.pi/agent/settings.json`。
+- **Project**：写入 `<project>/.pi/settings.json`。
+- **Effective**：只读显示 Global 与 Project 合并后的实际配置。
+
+保存时 GUI 会重新读取最新文件，只更新自己管理的字段，并保留未知配置键。Advanced Runtime 当前支持：
+
+- HTTP proxy、HTTP idle timeout、WebSocket connect timeout。
+- Provider timeout、最大重试次数和最大重试延迟。
+- `sessionDir`。
+- `shellPath`、`shellCommandPrefix`、`npmCommand`。
+- Branch summary reserve tokens、skip prompt。
+- Anthropic extra-usage warning。
+
+模型供应商列表来自当前 Pi `/login`，不是 GUI 自建列表。OAuth 地址由 Pi 返回后交给 macOS 打开；API Key 仅作为临时安全输入传递给 Pi，Swift GUI 不读取 `auth.json`。
+
+## Packages 与资源
+
+Packages 页面直接调用安装版 Pi 的 `SettingsManager` 和 `DefaultPackageManager`：
+
+- **Refresh**：只读取状态，不安装缺失包。
+- **Install**：支持 Pi 接受的 npm、Git、URL 和本地路径来源。
+- **Remove**：从实际所属作用域移除。
+- **Update / Update all**：更新单包或当前作用域中的全部包。
+- **Resource controls**：管理 Extensions、Skills、Prompt Templates 和 Themes 的启用状态及附加路径。
+
+Project 资源支持 Inherit、Enabled、Disabled 三态，不建立第二套独立包注册表。
+
+## 数据与隐私边界
+
+```text
+~/.pi/
+├── agent/                         # Pi 原生状态
+│   ├── auth.json                  # 凭据，GUI 不读取
+│   ├── settings.json              # Global Settings
+│   ├── sessions/                  # 默认会话目录
+│   ├── personal-pi-tasks.json     # GUI 任务状态
+│   ├── skills/
+│   ├── prompts/
+│   ├── extensions/
+│   └── themes/
+├── chat/                          # Global Chat 临时工作目录
+└── knowledge/                     # Global Knowledge
+
+<project>/
+├── AGENTS.md
+└── .pi/
+    ├── settings.json
+    ├── skills/
+    ├── prompts/
+    ├── extensions/
+    ├── themes/
+    └── knowledge/
+```
+
+- GUI 不读取或展示 API Key、OAuth Token。
+- 个人运行目录 `.pi/` 已被仓库忽略，不应整体提交到公开仓库。
+- Pi Extensions 与 Packages 使用当前用户权限运行，只应安装可信来源。
+- Personal Pi 按用户要求不再增加一层工具执行许可系统。
+
+## 当前边界
+
+GUI 已完成 Pi 的核心使用闭环，但不宣称与全部 Pi CLI/TUI/RPC 功能 100% 对等。当前尚未直接提供：
+
+- Steering 和 follow-up 队列及 `queue_update` 展示。
+- 独立 `bash` / `abort_bash` 控制台。
+- `get_entries` 原始会话条目接口。
+- `pi update --self`。
+- 完整 Extension widget/status/title/editor UI。
+
+这些差异不会阻止普通 Agent 对话、工具调用、会话管理、配置和包管理。
+
+## 开发与验证
+
+工程包含 `PersonalPi`、`PersonalPiTests` 和 `PersonalPiUITests`。常用验证：
 
 ```bash
 swift test
-xcodebuild -project PersonalPi.xcodeproj -scheme PersonalPi -destination 'platform=macOS' test
-```
-
-应用会从当前 `PATH` 和常见用户级安装目录发现 `pi`、`node` 与 `codex`。如需覆盖 Codex CLI 路径，可设置 `PERSONAL_PI_CODEX_EXECUTABLE`。
-
-运行本机 Pi/RPC 兼容性检查：
-
-```bash
+swift build -c release -Xswiftc -warnings-as-errors
+xcodebuild test -project PersonalPi.xcodeproj -scheme PersonalPi -destination 'platform=macOS'
 scripts/check-pi-compatibility.sh
-scripts/check-package-bridge.sh
 scripts/check-session-rpc.sh
-```
-
-验证公开 Starter Pack 的四个 Pi Skills：
-
-```bash
+scripts/check-package-bridge.sh
 scripts/check-starter-pack.sh
+scripts/build-app.sh debug
 ```
 
-- [Pi 兼容性记录](docs/pi-compatibility.md)
+环境覆盖项：
+
+| 环境变量 | 作用 |
+|---|---|
+| `PERSONAL_PI_EXECUTABLE` | 指定 Pi CLI |
+| `PERSONAL_PI_NODE_EXECUTABLE` | 指定 Node.js |
+| `PERSONAL_PI_CODEX_EXECUTABLE` | 指定 Codex CLI |
+| `PERSONAL_PI_DATA_ROOT` | 覆盖 `~/.pi`，主要用于测试 |
+| `PERSONAL_PI_DISABLE_EXTERNAL_PROCESSES` | 禁止 Pi、Node、Codex 子进程，主要用于测试 |
+| `PI_CODING_AGENT_SESSION_DIR` | 按 Pi 原生优先级覆盖会话目录 |
+
+后续开发先阅读 [GUI 开发接口](docs/gui-interface.md)。其他设计与兼容性文档：
+
 - [Personal Pi 配置协议](docs/configuration-contract.md)
-- [包与资源管理](docs/package-management.md)
-- [P4 全局上下文与核心 Skills](docs/p4-core-context-and-skills.md)
+- [Pi 兼容性记录](docs/pi-compatibility.md)
+- [Packages 与资源管理](docs/package-management.md)
+- [P4 Global Context 与核心 Skills](docs/p4-core-context-and-skills.md)
