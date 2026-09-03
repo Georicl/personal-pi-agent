@@ -319,7 +319,50 @@
 "Rename this session: /name title" = "重命名会话：/name 标题";
 "Configure provider authentication" = "配置供应商认证";
 "Remove stored provider authentication" = "移除已保存的供应商认证";
+"Compact context: /compact [custom instructions]" = "压缩上下文：/compact [自定义要求]";
+"Open saved sessions or resume by ID" = "打开已保存会话，或按 ID 恢复";
+"Show current session path, ID and usage" = "显示当前会话路径、ID 与用量";
+"Inspect and navigate the current session tree" = "查看并切换当前会话树";
+"Fork from an earlier user message" = "从较早的用户消息创建分支";
+"Clone the active branch into a new session" = "将当前分支克隆为新会话";
+"Export the session to HTML" = "将会话导出为 HTML";
+"Copy the last assistant reply" = "复制最后一条助手回复";
+"Reload Pi extensions, skills, prompts and themes" = "重新载入 Pi 扩展、技能、提示词与主题";
 "No description" = "没有说明";
+
+/* Session utilities */
+"Session actions" = "会话操作";
+"Session information" = "会话信息";
+"Runtime identity, storage and current usage" = "运行标识、存储位置与当前用量";
+"Name" = "名称";
+"Scope" = "范围";
+"Working directory" = "工作目录";
+"Session ID" = "会话 ID";
+"Session file" = "会话文件";
+"Messages" = "消息数";
+"Tokens" = "Token 数";
+"Cost" = "费用";
+"Not persisted yet" = "尚未持久化";
+"Show session file" = "在访达中显示会话文件";
+"Close" = "关闭";
+"Copy" = "复制";
+"Session tree" = "会话树";
+"Select an earlier node to continue from that branch" = "选择较早节点，并从该分支继续";
+"Loading session tree…" = "正在载入会话树…";
+"This session has no saved entries yet." = "当前会话还没有已保存的节点。";
+"Summarize the branch being left" = "总结即将离开的分支";
+"Optional summary instructions" = "可选的总结要求";
+"Navigate here" = "切换到这里";
+"Fork session" = "创建会话分支";
+"Start a new session before an earlier user message" = "在较早的用户消息之前创建新会话";
+"Loading user messages…" = "正在载入用户消息…";
+"No user message is available to fork from." = "没有可以创建分支的用户消息。";
+"Fork from message" = "从此消息创建分支";
+"Clone active branch" = "克隆当前分支";
+"Export HTML" = "导出 HTML";
+"Copy last reply" = "复制最后回复";
+"Reload Pi resources" = "重新载入 Pi 资源";
+"CURRENT" = "当前";
 
 /* Pi packages and resources */
 "Packages" = "包与资源";

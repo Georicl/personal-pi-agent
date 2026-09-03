@@ -22,6 +22,88 @@ struct PiSessionState: Sendable {
     let messageCount: Int
 }
 
+struct PiSessionTreeNode: Identifiable, Sendable, Hashable {
+    let id: String
+    let parentId: String?
+    let type: String
+    let timestamp: Date?
+    let role: String?
+    let text: String
+    let label: String?
+    let children: [PiSessionTreeNode]
+
+    var isUserMessage: Bool { type == "message" && role == "user" }
+
+    static func decode(_ object: [String: Any]) -> PiSessionTreeNode? {
+        guard let entry = object["entry"] as? [String: Any],
+              let id = entry["id"] as? String,
+              let type = entry["type"] as? String else { return nil }
+        let message = entry["message"] as? [String: Any]
+        let role = message?["role"] as? String
+        let text = message.flatMap { contentText($0["content"]) }
+            ?? entry["summary"] as? String
+            ?? entry["name"] as? String
+            ?? changeDescription(entry, type: type)
+        let timestamp = (entry["timestamp"] as? String).flatMap(parseTimestamp)
+        let children = (object["children"] as? [[String: Any]] ?? []).compactMap(decode)
+        return PiSessionTreeNode(
+            id: id,
+            parentId: entry["parentId"] as? String,
+            type: type,
+            timestamp: timestamp,
+            role: role,
+            text: text,
+            label: object["label"] as? String,
+            children: children
+        )
+    }
+
+    private static func contentText(_ value: Any?) -> String? {
+        if let text = value as? String { return text }
+        guard let blocks = value as? [[String: Any]] else { return nil }
+        let text = blocks.compactMap { block -> String? in
+            guard block["type"] as? String == "text" else { return nil }
+            return block["text"] as? String
+        }.joined()
+        return text.isEmpty ? nil : text
+    }
+
+    private static func parseTimestamp(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    private static func changeDescription(_ entry: [String: Any], type: String) -> String {
+        switch type {
+        case "model_change":
+            return [entry["provider"] as? String, entry["modelId"] as? String]
+                .compactMap { $0 }
+                .joined(separator: "/")
+        case "thinking_level_change":
+            return entry["thinkingLevel"] as? String ?? ""
+        case "custom":
+            return entry["customType"] as? String ?? ""
+        case "label":
+            return entry["label"] as? String ?? ""
+        default:
+            return ""
+        }
+    }
+}
+
+struct PiForkMessage: Identifiable, Sendable, Hashable {
+    let entryId: String
+    let text: String
+
+    var id: String { entryId }
+}
+
+struct PiForkResult: Sendable, Hashable {
+    let text: String
+    let cancelled: Bool
+}
+
 struct PiModelOption: Identifiable, Sendable, Hashable {
     let provider: String
     let modelId: String
@@ -240,8 +322,12 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         }
     }
 
-    func compact(completion: ((Bool) -> Void)? = nil) {
-        request(type: "compact") { response in
+    func compact(customInstructions: String? = nil, completion: ((Bool) -> Void)? = nil) {
+        var fields: [String: Any] = [:]
+        if let customInstructions, !customInstructions.isEmpty {
+            fields["customInstructions"] = customInstructions
+        }
+        request(type: "compact", fields: fields) { response in
             completion?(Self.responseSucceeded(response))
         }
     }
@@ -286,6 +372,136 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
     func switchSession(path: String, completion: @escaping (Bool) -> Void) {
         request(type: "switch_session", fields: ["sessionPath": path]) { response in
             completion(Self.responseSucceeded(response))
+        }
+    }
+
+    func requestSessionTree(completion: @escaping ([PiSessionTreeNode], String?) -> Void) {
+        request(type: "get_tree") { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any] else {
+                completion([], nil)
+                return
+            }
+            let tree = (data["tree"] as? [[String: Any]] ?? []).compactMap(PiSessionTreeNode.decode)
+            completion(tree, data["leafId"] as? String)
+        }
+    }
+
+    func requestForkMessages(completion: @escaping ([PiForkMessage]) -> Void) {
+        request(type: "get_fork_messages") { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any],
+                  let messages = data["messages"] as? [[String: Any]] else {
+                completion([])
+                return
+            }
+            completion(messages.compactMap { message in
+                guard let entryId = message["entryId"] as? String,
+                      let text = message["text"] as? String else { return nil }
+                return PiForkMessage(entryId: entryId, text: text)
+            })
+        }
+    }
+
+    func forkSession(entryId: String, completion: @escaping (PiForkResult?) -> Void) {
+        request(type: "fork", fields: ["entryId": entryId]) { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any] else {
+                completion(nil)
+                return
+            }
+            completion(PiForkResult(
+                text: data["text"] as? String ?? "",
+                cancelled: data["cancelled"] as? Bool ?? false
+            ))
+        }
+    }
+
+    func cloneSession(completion: @escaping (Bool) -> Void) {
+        request(type: "clone") { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any] else {
+                completion(false)
+                return
+            }
+            completion((data["cancelled"] as? Bool ?? false) == false)
+        }
+    }
+
+    func exportHTML(outputPath: String? = nil, completion: @escaping (String?) -> Void) {
+        var fields: [String: Any] = [:]
+        if let outputPath, !outputPath.isEmpty {
+            fields["outputPath"] = outputPath
+        }
+        request(type: "export_html", fields: fields) { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any] else {
+                completion(nil)
+                return
+            }
+            completion(data["path"] as? String)
+        }
+    }
+
+    func requestLastAssistantText(completion: @escaping (String?) -> Void) {
+        request(type: "get_last_assistant_text") { response in
+            guard Self.responseSucceeded(response),
+                  let data = response["data"] as? [String: Any] else {
+                completion(nil)
+                return
+            }
+            completion(data["text"] as? String)
+        }
+    }
+
+    func navigateTree(
+        entryId: String,
+        summarize: Bool,
+        customInstructions: String?,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard PiLaunchConfiguration.runtimeExtensionURL != nil else {
+            completion(false)
+            return
+        }
+        var payload: [String: Any] = ["entryId": entryId, "summarize": summarize]
+        if let customInstructions, !customInstructions.isEmpty {
+            payload["customInstructions"] = customInstructions
+        }
+        executeInternalCommand(name: "__personal_pi_navigate", payload: payload, completion: completion)
+    }
+
+    func reloadResources(completion: @escaping (Bool) -> Void) {
+        guard PiLaunchConfiguration.runtimeExtensionURL != nil else {
+            completion(false)
+            return
+        }
+        executeInternalCommand(name: "__personal_pi_reload", payload: [:], completion: completion)
+    }
+
+    private func executeInternalCommand(
+        name: String,
+        payload: [String: Any],
+        completion: @escaping (Bool) -> Void
+    ) {
+        let responseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("personal-pi-runtime-\(UUID().uuidString).json")
+        var commandPayload = payload
+        commandPayload["responsePath"] = responseURL.path
+        guard let data = try? JSONSerialization.data(withJSONObject: commandPayload) else {
+            completion(false)
+            return
+        }
+        let message = "/\(name) \(data.base64EncodedString())"
+        request(type: "prompt", fields: ["message": message]) { response in
+            defer { try? FileManager.default.removeItem(at: responseURL) }
+            guard Self.responseSucceeded(response),
+                  let data = try? Data(contentsOf: responseURL),
+                  let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                completion(false)
+                return
+            }
+            completion(result["success"] as? Bool == true)
         }
     }
 
@@ -570,7 +786,18 @@ enum PiLaunchConfiguration {
     static func arguments(projectTrusted: Bool) -> [String] {
         // The cwd is supplied to Process by PiRPCClient. Keep provider/model
         // selection in Pi settings so project overrides remain effective.
-        ["--mode", "rpc", projectTrusted ? "--approve" : "--no-approve"]
+        var arguments = ["--mode", "rpc", projectTrusted ? "--approve" : "--no-approve"]
+        if let runtimeExtensionURL {
+            arguments.append(contentsOf: ["--extension", runtimeExtensionURL.path])
+        }
+        return arguments
+    }
+
+    static var runtimeExtensionURL: URL? {
+        let bundled = Bundle.main.url(forResource: "personal-pi-runtime-extension", withExtension: "js")
+        let development = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("Resources/personal-pi-runtime-extension.js")
+        return bundled ?? (FileManager.default.fileExists(atPath: development.path) ? development : nil)
     }
 
     static func resolvedExecutable() -> String? {

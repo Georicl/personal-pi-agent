@@ -51,6 +51,8 @@ The Settings provider picker is not a custom-provider form. A bundled local brid
 
 The same adapter lists stored credential metadata through `listCredentials`, removes selected stored credentials with `ModelRuntime.logout`, and refreshes model catalogs with `ModelRuntime.refresh`. A successful login refreshes that provider's catalog, and Settings also provides an explicit full refresh. `/login [provider]` and `/logout [provider]` are GUI-native slash commands because Pi RPC intentionally does not execute built-in TUI commands.
 
+The GUI supplies the remaining session-oriented slash commands itself. Tree inspection, fork, clone, HTML export and last-reply copy use Pi RPC directly. Pi 0.84.3 does not expose same-file `navigateTree()` or resource `reload()` as RPC commands, so the app loads a bundled internal extension and invokes those two Pi-native extension-context actions without sending a model prompt. Internal command names are filtered out of the user command palette.
+
 The Packages & Resources page uses the installed Pi SDK's `SettingsManager` and `DefaultPackageManager`, matching `pi list`, `pi install`, `pi remove`, `pi update --extensions`, and the resource-filter behavior of `pi config`. Snapshot refreshes call `resolve(() => "skip")`, so merely opening the page never installs a missing package. Project resource overrides use Pi's package delta and `+` / `-` / `!` path semantics. Package code is reloaded only after an explicit mutation completes.
 
 ## Verified RPC surface
@@ -69,6 +71,12 @@ Personal Pi currently uses:
 - `prompt`
 - `abort`
 - `compact`
+- `export_html`
+- `fork`
+- `clone`
+- `get_fork_messages`
+- `get_tree`
+- `get_last_assistant_text`
 - `get_session_stats`
 - `set_session_name`
 - `extension_ui_response`
@@ -79,8 +87,7 @@ Pi 0.84.3 also documents, but the GUI does not yet expose:
 - model and thinking cycling commands
 - Pi CLI self-update (`pi update --self`); the GUI manages packages and model catalogs but does not replace its own bundled/runtime updater
 - standalone bash execution and cancellation
-- HTML export
-- `fork`, `clone`, `get_fork_messages`, `get_entries`, and `get_tree`
+- `get_entries`
 
 The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. It covers model defaults, `enabledModels`, `modelThinkingLevels`, `thinkingBudgets`, compaction thresholds, retry timing, message delivery, provider transport, image handling, and built-in tools. The Packages & Resources page owns package entries and the `extensions`, `skills`, `prompts`, and `themes` path arrays. Model thinking choices are derived from the full model metadata returned by Pi. Each editable scope is loaded independently, and saving reapplies the GUI-owned fields to the latest file contents before writing. The Session composer merges native GUI actions with `get_commands` results, so GUI-native commands, extension commands, prompt templates, and skill commands are available through the slash-command palette.
 

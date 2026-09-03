@@ -98,6 +98,17 @@ struct PiProviderAccountRequest: Identifiable, Sendable {
     let providerReference: String?
 }
 
+enum PiSessionUtilityKind: String, Sendable {
+    case info
+    case tree
+    case fork
+}
+
+struct PiSessionUtilityRequest: Identifiable, Sendable {
+    let id = UUID()
+    let kind: PiSessionUtilityKind
+}
+
 struct PiActivity: Identifiable, Sendable {
     let id: String
     var toolName: String
@@ -218,6 +229,14 @@ final class AppState: ObservableObject {
     @Published private(set) var sessionName = "New session"
     @Published private(set) var sessionModel = "Model not selected"
     @Published private(set) var sessionId: String?
+    @Published private(set) var sessionFile: String?
+    @Published private(set) var sessionMessageCount = 0
+    @Published private(set) var sessionTree: [PiSessionTreeNode] = []
+    @Published private(set) var sessionTreeLeafId: String?
+    @Published private(set) var forkMessages: [PiForkMessage] = []
+    @Published private(set) var isSessionUtilityLoading = false
+    @Published private(set) var sessionUtilityError = ""
+    @Published var sessionUtilityRequest: PiSessionUtilityRequest?
     @Published private(set) var availableModels: [PiModelOption] = []
     @Published private(set) var availableThinkingLevels = ["off"]
     @Published private(set) var availableCommands: [PiSlashCommand] = AppState.nativeCommands
@@ -232,6 +251,7 @@ final class AppState: ObservableObject {
     private var pendingPrompt: String?
     private var pendingNewSession = false
     private var pendingSession: PiSavedSession?
+    private var pendingSessionReference: String?
     private var activeTaskId: String?
     private var isRefreshingCatalog = false
     private var needsCatalogRefresh = false
@@ -394,6 +414,8 @@ final class AppState: ObservableObject {
                     self.messages = []
                     self.activities = []
                     self.sessionName = "New session"
+                    self.sessionFile = nil
+                    self.sessionMessageCount = 0
                     self.agentStatus = "Ready"
                     self.reloadSession()
                     self.refreshSavedSessions()
@@ -432,10 +454,10 @@ final class AppState: ObservableObject {
         taskStore.update(id: activeTaskId, state: .running, detail: "Continuing after input")
     }
 
-    func compactSession() {
+    func compactSession(customInstructions: String? = nil) {
         guard isPiRunning else { return }
         agentStatus = "Compacting…"
-        piClient.compact { [weak self] success in
+        piClient.compact(customInstructions: customInstructions) { [weak self] success in
             Task { @MainActor in
                 guard let self else { return }
                 self.agentStatus = success ? "Compacted" : "Compaction failed"
@@ -466,6 +488,209 @@ final class AppState: ObservableObject {
                     self.agentStatus = "Ready"
                 } else {
                     self.agentStatus = "Unable to load session"
+                }
+            }
+        }
+    }
+
+    func resumeSession(matching reference: String = "") {
+        selectedSection = .sessions
+        let query = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            refreshSavedSessions()
+            agentStatus = "Choose a saved session"
+            return
+        }
+        if let session = matchingSavedSession(query) {
+            switchSession(session)
+            return
+        }
+        pendingSessionReference = query
+        agentStatus = "Searching saved sessions…"
+        refreshSavedSessions()
+    }
+
+    func presentSessionInfo() {
+        selectedSection = .sessions
+        sessionUtilityError = ""
+        sessionUtilityRequest = PiSessionUtilityRequest(kind: .info)
+        if isPiRunning { reloadSession(loadMessages: false) }
+    }
+
+    func presentSessionTree() {
+        selectedSection = .sessions
+        guard isPiRunning else {
+            agentStatus = "Connect to Pi to inspect the session tree"
+            return
+        }
+        sessionTree = []
+        sessionTreeLeafId = nil
+        sessionUtilityError = ""
+        isSessionUtilityLoading = true
+        sessionUtilityRequest = PiSessionUtilityRequest(kind: .tree)
+        piClient.requestSessionTree { [weak self] tree, leafId in
+            Task { @MainActor in
+                guard let self else { return }
+                self.sessionTree = tree
+                self.sessionTreeLeafId = leafId
+                self.isSessionUtilityLoading = false
+                if tree.isEmpty && self.sessionMessageCount > 0 {
+                    self.sessionUtilityError = "Pi returned an empty session tree"
+                }
+            }
+        }
+    }
+
+    func presentForkPicker() {
+        selectedSection = .sessions
+        guard isPiRunning else {
+            agentStatus = "Connect to Pi to fork a session"
+            return
+        }
+        forkMessages = []
+        sessionUtilityError = ""
+        isSessionUtilityLoading = true
+        sessionUtilityRequest = PiSessionUtilityRequest(kind: .fork)
+        piClient.requestForkMessages { [weak self] messages in
+            Task { @MainActor in
+                guard let self else { return }
+                self.forkMessages = messages
+                self.isSessionUtilityLoading = false
+                if messages.isEmpty {
+                    self.sessionUtilityError = "No user message is available to fork from"
+                }
+            }
+        }
+    }
+
+    func navigateSessionTree(to entryId: String, summarize: Bool, customInstructions: String) {
+        guard isPiRunning else { return }
+        isSessionUtilityLoading = true
+        sessionUtilityError = ""
+        agentStatus = "Navigating session tree…"
+        piClient.navigateTree(
+            entryId: entryId,
+            summarize: summarize,
+            customInstructions: customInstructions.trimmingCharacters(in: .whitespacesAndNewlines).nonEmptyValue
+        ) { [weak self] success in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isSessionUtilityLoading = false
+                if success {
+                    self.sessionUtilityRequest = nil
+                    self.agentStatus = "Session branch selected"
+                    self.reloadSession(loadMessages: true)
+                } else {
+                    self.sessionUtilityError = "Unable to navigate the session tree"
+                    self.agentStatus = self.sessionUtilityError
+                }
+            }
+        }
+    }
+
+    func forkCurrentSession(from entryId: String) {
+        guard isPiRunning else { return }
+        isSessionUtilityLoading = true
+        sessionUtilityError = ""
+        agentStatus = "Forking session…"
+        piClient.forkSession(entryId: entryId) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isSessionUtilityLoading = false
+                guard let result, !result.cancelled else {
+                    self.sessionUtilityError = result?.cancelled == true
+                        ? "Session fork was cancelled"
+                        : "Unable to fork session"
+                    self.agentStatus = self.sessionUtilityError
+                    return
+                }
+                self.sessionUtilityRequest = nil
+                self.activeTaskId = nil
+                self.messages = []
+                self.activities = []
+                self.composerText = result.text
+                self.agentStatus = result.text.isEmpty ? "Session forked" : "Session forked · original prompt restored"
+                self.reloadSession(loadMessages: true)
+                self.refreshSavedSessions()
+            }
+        }
+    }
+
+    func cloneCurrentSession() {
+        guard isPiRunning else {
+            agentStatus = "Connect to Pi to clone a session"
+            return
+        }
+        agentStatus = "Cloning session…"
+        piClient.cloneSession { [weak self] success in
+            Task { @MainActor in
+                guard let self else { return }
+                guard success else {
+                    self.agentStatus = "Unable to clone session"
+                    return
+                }
+                self.activeTaskId = nil
+                self.messages = []
+                self.activities = []
+                self.agentStatus = "Session cloned"
+                self.reloadSession(loadMessages: true)
+                self.refreshSavedSessions()
+            }
+        }
+    }
+
+    func exportCurrentSession(outputPath: String? = nil) {
+        guard isPiRunning else {
+            agentStatus = "Connect to Pi to export a session"
+            return
+        }
+        agentStatus = "Exporting session…"
+        piClient.exportHTML(outputPath: outputPath?.nonEmptyValue) { [weak self] path in
+            Task { @MainActor in
+                guard let self else { return }
+                guard let path else {
+                    self.agentStatus = "Unable to export session"
+                    return
+                }
+                self.agentStatus = "Exported session"
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            }
+        }
+    }
+
+    func copyLastAssistantReply() {
+        guard isPiRunning else {
+            agentStatus = "Connect to Pi to copy the last reply"
+            return
+        }
+        piClient.requestLastAssistantText { [weak self] text in
+            Task { @MainActor in
+                guard let self else { return }
+                guard let text, !text.isEmpty else {
+                    self.agentStatus = "No assistant reply to copy"
+                    return
+                }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                self.agentStatus = "Last assistant reply copied"
+            }
+        }
+    }
+
+    func reloadPiResources() {
+        guard isPiRunning else {
+            agentStatus = "Connect to Pi to reload resources"
+            return
+        }
+        agentStatus = "Reloading Pi resources…"
+        piClient.reloadResources { [weak self] success in
+            Task { @MainActor in
+                guard let self else { return }
+                self.agentStatus = success ? "Pi resources reloaded" : "Unable to reload Pi resources"
+                if success {
+                    self.reloadSession(loadMessages: true)
+                    self.loadModels()
+                    self.refreshCommands()
                 }
             }
         }
@@ -527,6 +752,8 @@ final class AppState: ObservableObject {
             Task { @MainActor in
                 guard let self, let state else { return }
                 self.sessionId = state.sessionId
+                self.sessionFile = state.sessionFile
+                self.sessionMessageCount = state.messageCount
                 if let sessionId = state.sessionId {
                     self.taskStore.bind(id: self.activeTaskId, to: sessionId)
                     if self.activeTaskId == nil {
@@ -597,7 +824,9 @@ final class AppState: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 let nativeNames = Set(Self.nativeCommands.map(\.name))
-                self.availableCommands = Self.nativeCommands + commands.filter { !nativeNames.contains($0.name) }
+                self.availableCommands = Self.nativeCommands + commands.filter {
+                    !nativeNames.contains($0.name) && !$0.name.hasPrefix("__personal_pi_")
+                }
             }
         }
     }
@@ -636,7 +865,7 @@ final class AppState: ObservableObject {
         case "new":
             startNewSession()
         case "compact":
-            compactSession()
+            compactSession(customInstructions: argument.nonEmptyValue)
         case "model":
             guard !argument.isEmpty else {
                 selectedSection = .settings
@@ -681,6 +910,23 @@ final class AppState: ObservableObject {
             selectedSection = .settings
             presentProviderAccounts(intent: .logout, providerReference: argument)
             agentStatus = "Choose a provider to log out"
+        case "resume":
+            resumeSession(matching: argument)
+        case "session":
+            presentSessionInfo()
+        case "tree":
+            presentSessionTree()
+        case "fork":
+            if argument.isEmpty { presentForkPicker() }
+            else { forkCurrentSession(from: argument) }
+        case "clone":
+            cloneCurrentSession()
+        case "export":
+            exportCurrentSession(outputPath: argument.nonEmptyValue)
+        case "copy":
+            copyLastAssistantReply()
+        case "reload":
+            reloadPiResources()
         default:
             return false
         }
@@ -689,15 +935,23 @@ final class AppState: ObservableObject {
 
     static let thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
 
-    private static let nativeCommands: [PiSlashCommand] = [
+    static let nativeCommands: [PiSlashCommand] = [
         PiSlashCommand(name: "settings", description: "Open Global and Project Pi settings", source: "native", location: nil, path: nil),
         PiSlashCommand(name: "new", description: "Start a new session", source: "native", location: nil, path: nil),
-        PiSlashCommand(name: "compact", description: "Compact the current session context", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "compact", description: "Compact context: /compact [custom instructions]", source: "native", location: nil, path: nil),
         PiSlashCommand(name: "model", description: "Switch model: /model provider/model", source: "native", location: nil, path: nil),
         PiSlashCommand(name: "thinking", description: "Set reasoning level: /thinking high", source: "native", location: nil, path: nil),
         PiSlashCommand(name: "name", description: "Rename this session: /name title", source: "native", location: nil, path: nil),
         PiSlashCommand(name: "login", description: "Configure provider authentication", source: "native", location: nil, path: nil),
-        PiSlashCommand(name: "logout", description: "Remove stored provider authentication", source: "native", location: nil, path: nil)
+        PiSlashCommand(name: "logout", description: "Remove stored provider authentication", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "resume", description: "Open saved sessions or resume by ID", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "session", description: "Show current session path, ID and usage", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "tree", description: "Inspect and navigate the current session tree", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "fork", description: "Fork from an earlier user message", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "clone", description: "Clone the active branch into a new session", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "export", description: "Export the session to HTML", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "copy", description: "Copy the last assistant reply", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "reload", description: "Reload Pi extensions, skills, prompts and themes", source: "native", location: nil, path: nil)
     ]
 
     func refreshSavedSessions() {
@@ -730,6 +984,14 @@ final class AppState: ObservableObject {
             projectGroups = snapshot.groups
             workspaces = snapshot.workspaces
             taskStore.reconcileSessions(snapshot.sessions)
+            if let reference = pendingSessionReference {
+                pendingSessionReference = nil
+                if let session = matchingSavedSession(reference) {
+                    switchSession(session)
+                } else {
+                    agentStatus = "Session not found: \(reference)"
+                }
+            }
             if let refreshed = workspaces.first(where: { $0.path == workspace.path }) {
                 workspace = refreshed
                 if workspaceScope == .workspace {
@@ -743,6 +1005,14 @@ final class AppState: ObservableObject {
                 refreshSavedSessions()
             }
         }
+    }
+
+    private func matchingSavedSession(_ query: String) -> PiSavedSession? {
+        let exactID = savedSessions.first { $0.id.caseInsensitiveCompare(query) == .orderedSame }
+        let normalizedQuery = query.lowercased()
+        let IDPrefix = savedSessions.first { $0.id.lowercased().hasPrefix(normalizedQuery) }
+        let exactPath = savedSessions.first { $0.path.caseInsensitiveCompare(query) == .orderedSame }
+        return exactID ?? IDPrefix ?? exactPath
     }
 
     func refreshWorkspace() {
@@ -1117,6 +1387,10 @@ final class AppState: ObservableObject {
             )
         }
     }
+}
+
+private extension String {
+    var nonEmptyValue: String? { isEmpty ? nil : self }
 }
 
 private enum PiSessionCatalog {

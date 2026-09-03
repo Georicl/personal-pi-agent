@@ -3,6 +3,11 @@ import SwiftUI
 struct SessionsView: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage("personalPi.showActivityDrawer") private var showActivityDrawer = true
+    @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.system.rawValue
+
+    private var interfaceLocale: Locale {
+        (AppLanguage(rawValue: languageRawValue) ?? .system).locale
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -23,6 +28,11 @@ struct SessionsView: View {
         .background(Theme.canvas)
         .task {
             appState.refreshSavedSessions()
+        }
+        .sheet(item: $appState.sessionUtilityRequest) { request in
+            SessionUtilitySheet(request: request)
+                .environmentObject(appState)
+                .environment(\.locale, interfaceLocale)
         }
     }
 }
@@ -359,6 +369,26 @@ struct SessionToolbar: View {
                 )
                 .buttonStyle(.plain)
             }
+
+            Menu {
+                Button("Session information") { appState.presentSessionInfo() }
+                Button("Session tree") { appState.presentSessionTree() }
+                Button("Fork session") { appState.presentForkPicker() }
+                Button("Clone active branch") { appState.cloneCurrentSession() }
+                Divider()
+                Button("Export HTML") { appState.exportCurrentSession() }
+                Button("Copy last reply") { appState.copyLastAssistantReply() }
+                Button("Reload Pi resources") { appState.reloadPiResources() }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.muted)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(!appState.isPiRunning || appState.isGenerating)
+            .help("Session actions")
+            .accessibilityIdentifier("session-actions-menu")
 
             Button("New session") {
                 appState.startNewSession()
