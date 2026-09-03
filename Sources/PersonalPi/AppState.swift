@@ -6,6 +6,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case overview
     case sessions
     case knowledge
+    case packages
     case projects
     case tasks
     case diagnostics
@@ -18,6 +19,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .overview: "Overview"
         case .sessions: "Sessions"
         case .knowledge: "Knowledge"
+        case .packages: "Packages"
         case .projects: "Projects"
         case .tasks: "Tasks"
         case .diagnostics: "Diagnostics"
@@ -30,6 +32,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .overview: "diamond"
         case .sessions: "square.on.square"
         case .knowledge: "line.3.horizontal"
+        case .packages: "shippingbox"
         case .projects: "tablecells"
         case .tasks: "diamond.inset.filled"
         case .diagnostics: "stethoscope"

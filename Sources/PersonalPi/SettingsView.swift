@@ -53,9 +53,6 @@ struct SettingsView: View {
     @State private var skillCommands = PiOptionalSetting.inherited
     @State private var overridesTools = false
     @State private var selectedTools = Set<String>()
-    @State private var skills = ""
-    @State private var prompts = ""
-    @State private var extensions = ""
     @State private var status = ""
     @State private var hasSourceError = false
     @State private var statusIsError = false
@@ -96,7 +93,6 @@ struct SettingsView: View {
             modelCard
             behaviorCard
             toolsCard
-            resourcesCard
             saveBar
         }
         .padding(28)
@@ -543,17 +539,6 @@ struct SettingsView: View {
         }
     }
 
-    private var resourcesCard: some View {
-        SettingsCard(title: "Additional resources", subtitle: "One path or glob per line. Pi still auto-discovers the standard skills, prompts and extensions folders.") {
-            VStack(spacing: 13) {
-                resourceRow(title: "Skills", text: $skills, example: "skills/team/**")
-                resourceRow(title: "Prompts", text: $prompts, example: "prompts/research/*.md")
-                resourceRow(title: "Extensions", text: $extensions, example: "extensions/*.ts")
-            }
-            .disabled(isReadOnly)
-        }
-    }
-
     private var saveBar: some View {
         HStack(spacing: 12) {
             if !status.isEmpty {
@@ -621,45 +606,6 @@ struct SettingsView: View {
             .labelsHidden()
             .frame(width: 210)
             .disabled(isReadOnly)
-        }
-    }
-
-    @ViewBuilder
-    private func resourceRow(title: String, text: Binding<String>, example: String) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            Text(LocalizedStringKey(title))
-                .font(Theme.sans(12))
-                .foregroundStyle(Theme.secondary)
-                .frame(width: 150, alignment: .leading)
-                .padding(.top, 7)
-            if isReadOnly {
-                Text(text.wrappedValue.isEmpty ? "—" : text.wrappedValue)
-                    .font(Theme.mono(10.5))
-                    .foregroundStyle(text.wrappedValue.isEmpty ? Theme.pale : Theme.muted)
-                    .textSelection(.enabled)
-                    .padding(9)
-                    .frame(maxWidth: .infinity, minHeight: 58, alignment: .topLeading)
-                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line, lineWidth: 1))
-            } else {
-                TextEditor(text: text)
-                    .font(Theme.mono(10.5))
-                    .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .frame(minHeight: 58, maxHeight: 82)
-                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line, lineWidth: 1))
-                    .overlay(alignment: .topLeading) {
-                        if text.wrappedValue.isEmpty {
-                            Text(example)
-                                .font(Theme.mono(10.5))
-                                .foregroundStyle(Theme.pale)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 10)
-                                .allowsHitTesting(false)
-                        }
-                    }
-            }
         }
     }
 
@@ -763,9 +709,6 @@ struct SettingsView: View {
             overridesTools = false
             selectedTools = []
         }
-        skills = stringList(document["skills"])
-        prompts = stringList(document["prompts"])
-        extensions = stringList(document["extensions"])
         ensureThinkingModelSelection()
     }
 
@@ -826,10 +769,6 @@ struct SettingsView: View {
         PiSettingsFile.setOptionalBool(skillCommands, path: ["enableSkillCommands"], in: &document)
         if overridesTools { document["defaultTools"] = builtInTools.filter(selectedTools.contains) }
         else { document.removeValue(forKey: "defaultTools") }
-        PiSettingsFile.setStringList(skills, key: "skills", in: &document)
-        PiSettingsFile.setStringList(prompts, key: "prompts", in: &document)
-        PiSettingsFile.setStringList(extensions, key: "extensions", in: &document)
-
         do {
             try PiSettingsFile.write(document, to: selectedURL)
             baseDocument = document

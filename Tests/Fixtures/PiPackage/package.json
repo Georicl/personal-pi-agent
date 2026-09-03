@@ -1,0 +1,11 @@
+{
+  "name": "personal-pi-package-bridge-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "pi": {
+    "extensions": ["extensions/example.ts"],
+    "skills": ["skills/example"],
+    "prompts": ["prompts/example.md"],
+    "themes": ["themes/example.json"]
+  }
+}
