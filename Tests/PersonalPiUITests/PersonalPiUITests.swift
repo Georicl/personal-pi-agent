@@ -30,8 +30,10 @@ final class PersonalPiUITests: XCTestCase {
         XCTAssertTrue(languageExists)
         XCTAssertTrue(app.popUpButtons["default-provider-picker"].exists)
         XCTAssertTrue(app.popUpButtons["default-model-picker"].exists)
-        XCTAssertTrue(app.buttons["enabled-models-menu"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["enabled-models-menu"].exists)
         XCTAssertTrue(app.buttons["包与资源"].exists)
+        XCTAssertTrue(app.staticTexts["高级运行环境"].exists)
+        XCTAssertTrue(app.disclosureTriangles["advanced-runtime-disclosure"].exists)
         let overviewExists = app.buttons["总览"].exists
         XCTAssertTrue(overviewExists)
     }

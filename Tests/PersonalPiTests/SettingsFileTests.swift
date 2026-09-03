@@ -91,4 +91,26 @@ struct SettingsFileTests {
         #expect(model.identity == "openai-codex/gpt-5.6")
         #expect(model.supportedThinkingLevels.contains("max"))
     }
+
+    @Test("Advanced runtime settings preserve Pi nested key shapes")
+    func writesAdvancedRuntimeSettings() {
+        var document: [String: Any] = ["futureSetting": true]
+
+        PiSettingsFile.setString("http://127.0.0.1:7890", key: "httpProxy", in: &document)
+        PiSettingsFile.setOptionalInt("45000", path: ["httpIdleTimeoutMs"], in: &document)
+        PiSettingsFile.setOptionalInt("120000", path: ["retry", "provider", "timeoutMs"], in: &document)
+        PiSettingsFile.setOptionalInt("5", path: ["retry", "provider", "maxRetries"], in: &document)
+        PiSettingsFile.setStringList("pnpm\n--silent", key: "npmCommand", in: &document)
+        PiSettingsFile.setOptionalBool(.enabled, path: ["branchSummary", "skipPrompt"], in: &document)
+        PiSettingsFile.setOptionalBool(.disabled, path: ["warnings", "anthropicExtraUsage"], in: &document)
+
+        #expect(document["httpProxy"] as? String == "http://127.0.0.1:7890")
+        #expect((document["httpIdleTimeoutMs"] as? NSNumber)?.intValue == 45000)
+        #expect((PiSettingsFile.value(in: document, path: ["retry", "provider", "timeoutMs"]) as? NSNumber)?.intValue == 120000)
+        #expect((PiSettingsFile.value(in: document, path: ["retry", "provider", "maxRetries"]) as? NSNumber)?.intValue == 5)
+        #expect(document["npmCommand"] as? [String] == ["pnpm", "--silent"])
+        #expect(PiSettingsFile.value(in: document, path: ["branchSummary", "skipPrompt"]) as? Bool == true)
+        #expect(PiSettingsFile.value(in: document, path: ["warnings", "anthropicExtraUsage"]) as? Bool == false)
+        #expect(document["futureSetting"] as? Bool == true)
+    }
 }

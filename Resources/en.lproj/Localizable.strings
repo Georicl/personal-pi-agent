@@ -84,6 +84,29 @@
 "High budget" = "High budget";
 "Max" = "Max";
 
+/* Advanced runtime settings */
+"Advanced runtime" = "Advanced runtime";
+"Network, provider, shell and branch-summary settings supported by the installed Pi runtime." = "Network, provider, shell and branch-summary settings supported by the installed Pi runtime.";
+"Show advanced options" = "Show advanced options";
+"Network & provider" = "Network & provider";
+"HTTP proxy" = "HTTP proxy";
+"Global only · http://127.0.0.1:7890" = "Global only · http://127.0.0.1:7890";
+"Pi reads HTTP proxy from Global settings before project configuration is loaded." = "Pi reads HTTP proxy from Global settings before project configuration is loaded.";
+"HTTP idle timeout (ms)" = "HTTP idle timeout (ms)";
+"WebSocket connect timeout (ms)" = "WebSocket connect timeout (ms)";
+"Provider timeout (ms)" = "Provider timeout (ms)";
+"Provider maximum retries" = "Provider maximum retries";
+"Shell & package commands" = "Shell & package commands";
+"Shell path" = "Shell path";
+"Pi default shell" = "Pi default shell";
+"Shell command prefix" = "Shell command prefix";
+"npm command" = "npm command";
+"One executable or argument per line, for example npm on the first line." = "One executable or argument per line, for example npm on the first line.";
+"Branch summaries & warnings" = "Branch summaries & warnings";
+"Branch summary reserve tokens" = "Branch summary reserve tokens";
+"Skip branch-summary prompt" = "Skip branch-summary prompt";
+"Anthropic extra-usage warning" = "Anthropic extra-usage warning";
+
 /* Native slash commands */
 "Open Global and Project Pi settings" = "Open Global and Project Pi settings";
 "Start a new session" = "Start a new session";
