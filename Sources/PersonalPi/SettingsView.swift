@@ -57,6 +57,7 @@ struct SettingsView: View {
     @State private var websocketConnectTimeoutMs = ""
     @State private var providerTimeoutMs = ""
     @State private var providerMaxRetries = ""
+    @State private var sessionDirectory = ""
     @State private var shellPath = ""
     @State private var shellCommandPrefix = ""
     @State private var npmCommand = ""
@@ -555,7 +556,7 @@ struct SettingsView: View {
     private var advancedRuntimeCard: some View {
         SettingsCard(
             title: "Advanced runtime",
-            subtitle: "Network, provider, shell and branch-summary settings supported by the installed Pi runtime."
+            subtitle: "Network, provider, session, shell and branch-summary settings supported by the installed Pi runtime."
         ) {
             DisclosureGroup("Show advanced options", isExpanded: $showingAdvancedRuntime) {
                 VStack(alignment: .leading, spacing: 16) {
@@ -580,6 +581,25 @@ struct SettingsView: View {
                             .disabled(isReadOnly)
                     }
 
+                    advancedSection("Session storage") {
+                        SettingsTextRow(
+                            title: "Session directory",
+                            placeholder: selectedScope == .project ? "Inherit" : "~/.pi/agent/sessions",
+                            text: $sessionDirectory
+                        )
+                        .disabled(isReadOnly)
+                        Text("Relative paths are resolved from the active Project or Global Chat directory. The session catalog always keeps Pi's default directory visible.")
+                            .font(Theme.sans(9.5))
+                            .foregroundStyle(Theme.faint)
+                            .padding(.leading, 166)
+                        if let override = ProcessInfo.processInfo.environment["PI_CODING_AGENT_SESSION_DIR"],
+                           !override.isEmpty {
+                            Text("PI_CODING_AGENT_SESSION_DIR currently overrides this setting: \(override)")
+                                .font(Theme.mono(9.5))
+                                .foregroundStyle(Theme.warning)
+                                .padding(.leading, 166)
+                        }
+                    }
                     advancedSection("Shell & package commands") {
                         SettingsTextRow(title: "Shell path", placeholder: selectedScope == .project ? "Inherit" : "Pi default shell", text: $shellPath)
                             .disabled(isReadOnly)
@@ -793,6 +813,7 @@ struct SettingsView: View {
         websocketConnectTimeoutMs = numberString(document["websocketConnectTimeoutMs"])
         providerTimeoutMs = numberString(PiSettingsFile.value(in: document, path: ["retry", "provider", "timeoutMs"]))
         providerMaxRetries = numberString(PiSettingsFile.value(in: document, path: ["retry", "provider", "maxRetries"]))
+        sessionDirectory = document["sessionDir"] as? String ?? ""
         shellPath = document["shellPath"] as? String ?? ""
         shellCommandPrefix = document["shellCommandPrefix"] as? String ?? ""
         npmCommand = stringList(document["npmCommand"])
@@ -876,6 +897,7 @@ struct SettingsView: View {
         PiSettingsFile.setOptionalInt(websocketConnectTimeoutMs, path: ["websocketConnectTimeoutMs"], in: &document)
         PiSettingsFile.setOptionalInt(providerTimeoutMs, path: ["retry", "provider", "timeoutMs"], in: &document)
         PiSettingsFile.setOptionalInt(providerMaxRetries, path: ["retry", "provider", "maxRetries"], in: &document)
+        PiSettingsFile.setString(sessionDirectory, key: "sessionDir", in: &document)
         PiSettingsFile.setString(shellPath, key: "shellPath", in: &document)
         PiSettingsFile.setString(shellCommandPrefix, key: "shellCommandPrefix", in: &document)
         PiSettingsFile.setStringList(npmCommand, key: "npmCommand", in: &document)

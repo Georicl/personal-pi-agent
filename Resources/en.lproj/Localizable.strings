@@ -86,7 +86,7 @@
 
 /* Advanced runtime settings */
 "Advanced runtime" = "Advanced runtime";
-"Network, provider, shell and branch-summary settings supported by the installed Pi runtime." = "Network, provider, shell and branch-summary settings supported by the installed Pi runtime.";
+"Network, provider, session, shell and branch-summary settings supported by the installed Pi runtime." = "Network, provider, session, shell and branch-summary settings supported by the installed Pi runtime.";
 "Show advanced options" = "Show advanced options";
 "Network & provider" = "Network & provider";
 "HTTP proxy" = "HTTP proxy";
@@ -96,6 +96,11 @@
 "WebSocket connect timeout (ms)" = "WebSocket connect timeout (ms)";
 "Provider timeout (ms)" = "Provider timeout (ms)";
 "Provider maximum retries" = "Provider maximum retries";
+"Session storage" = "Session storage";
+"Session directory" = "Session directory";
+"~/.pi/agent/sessions" = "~/.pi/agent/sessions";
+"Relative paths are resolved from the active Project or Global Chat directory. The session catalog always keeps Pi's default directory visible." = "Relative paths are resolved from the active Project or Global Chat directory. The session catalog always keeps Pi's default directory visible.";
+"PI_CODING_AGENT_SESSION_DIR currently overrides this setting: %@" = "PI_CODING_AGENT_SESSION_DIR currently overrides this setting: %@";
 "Shell & package commands" = "Shell & package commands";
 "Shell path" = "Shell path";
 "Pi default shell" = "Pi default shell";

@@ -11,7 +11,7 @@ This contract separates Pi-owned runtime state, Personal Pi data, and project-ow
 │   ├── settings.json              # Global Pi settings
 │   ├── models.json                # Custom providers and model definitions
 │   ├── trust.json                 # Saved project trust decisions
-│   ├── sessions/                  # Pi JSONL sessions
+│   ├── sessions/                  # Default Pi JSONL sessions
 │   ├── AGENTS.md                  # Optional global working instructions
 │   ├── SYSTEM.md                  # Optional system-prompt replacement
 │   ├── APPEND_SYSTEM.md           # Optional system-prompt addition
@@ -36,6 +36,8 @@ Rules:
 - Project resource controls preserve Pi's `inherit`, explicit load, and explicit unload semantics, including delta overrides for resources inherited from Global packages.
 - Provider readiness comes from `pi auth check --provider <id> --json --no-refresh`; the GUI never requests `--credentials`.
 - Global Chat always runs with `~/.pi/chat` as cwd.
+- `sessionDir` may redirect session files globally or per project. Relative paths resolve from the Pi process cwd, while `~` resolves from the current user's home directory.
+- Session discovery always includes the default `~/.pi/agent/sessions/` tree plus every unique effective `sessionDir` for Global Chat and registered projects. Overlapping roots are deduplicated by canonical session-file path.
 - Global knowledge is an external source; it is retrieved on demand rather than injected wholesale into every prompt.
 
 ## Project scope

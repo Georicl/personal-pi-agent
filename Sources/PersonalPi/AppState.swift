@@ -834,6 +834,7 @@ final class AppState: ObservableObject {
     func applySettingsChange() {
         sessionModel = piClient.configuredModelLabel(for: activeWorkingDirectory) ?? sessionModel
         availableCommands = Self.nativeCommands
+        refreshSavedSessions()
         guard isPiRunning else {
             resetIdleConnectionState()
             return
@@ -961,13 +962,19 @@ final class AppState: ObservableObject {
         }
         isRefreshingCatalog = true
         let workspacePaths = workspaces.map(\.path)
-        let sessionRoot = URL(fileURLWithPath: piRootDirectory)
-            .appendingPathComponent("agent/sessions", isDirectory: true)
+        let piRoot = URL(fileURLWithPath: piRootDirectory, isDirectory: true)
         let globalRoot = globalChatDirectory
+        let sessionDirectoryOverride = ProcessInfo.processInfo.environment["PI_CODING_AGENT_SESSION_DIR"]
 
         Task {
             let snapshot = await Task.detached(priority: .utility) {
-                let sessions = PiSessionCatalog.allSessions(at: sessionRoot)
+                let sessionRoots = PiSessionDirectoryResolver.scanRoots(
+                    piRoot: piRoot,
+                    globalChatDirectory: globalRoot,
+                    projectPaths: workspacePaths,
+                    environmentSessionDirectory: sessionDirectoryOverride
+                )
+                let sessions = PiSessionCatalog.allSessions(at: sessionRoots)
                 let groups = PiSessionCatalog.projectGroups(from: sessions)
                 let discoveredPaths = Self.discoveredWorkspacePaths(
                     registeredPaths: workspacePaths,
@@ -1393,7 +1400,95 @@ private extension String {
     var nonEmptyValue: String? { isEmpty ? nil : self }
 }
 
-private enum PiSessionCatalog {
+enum PiSessionDirectoryResolver {
+    static func scanRoots(
+        piRoot: URL,
+        globalChatDirectory: String,
+        projectPaths: [String],
+        environmentSessionDirectory: String? = ProcessInfo.processInfo.environment["PI_CODING_AGENT_SESSION_DIR"],
+        homeDirectory: String = NSHomeDirectory()
+    ) -> [URL] {
+        let globalSettings = readSettings(
+            at: piRoot.appendingPathComponent("agent/settings.json")
+        )
+        let defaultRoot = piRoot
+            .appendingPathComponent("agent/sessions", isDirectory: true)
+            .standardizedFileURL
+        var roots = [defaultRoot]
+
+        let workingDirectories = [globalChatDirectory] + projectPaths
+        for workingDirectory in workingDirectories {
+            let projectSettings = readSettings(
+                at: URL(fileURLWithPath: workingDirectory, isDirectory: true)
+                    .appendingPathComponent(".pi/settings.json")
+            )
+            let effectiveSettings = PiSettingsFile.merge(globalSettings, projectSettings)
+            let configuredDirectory = environmentSessionDirectory?.nonEmptyValue
+                ?? (effectiveSettings["sessionDir"] as? String)?.nonEmptyValue
+            guard let configuredDirectory else { continue }
+            roots.append(
+                resolve(
+                    configuredDirectory,
+                    relativeTo: workingDirectory,
+                    homeDirectory: homeDirectory
+                )
+            )
+        }
+
+        var seen = Set<String>()
+        return roots.filter { root in
+            seen.insert(canonicalPath(root)).inserted
+        }
+    }
+
+    static func resolve(
+        _ rawPath: String,
+        relativeTo workingDirectory: String,
+        homeDirectory: String = NSHomeDirectory()
+    ) -> URL {
+        let expanded: String
+        if rawPath == "~" {
+            expanded = homeDirectory
+        } else if rawPath.hasPrefix("~/") {
+            expanded = (homeDirectory as NSString).appendingPathComponent(String(rawPath.dropFirst(2)))
+        } else if rawPath.hasPrefix("file://"), let fileURL = URL(string: rawPath), fileURL.isFileURL {
+            return fileURL.standardizedFileURL
+        } else {
+            expanded = rawPath
+        }
+
+        if (expanded as NSString).isAbsolutePath {
+            return URL(fileURLWithPath: expanded, isDirectory: true).standardizedFileURL
+        }
+        return URL(fileURLWithPath: expanded, isDirectory: true, relativeTo: URL(fileURLWithPath: workingDirectory, isDirectory: true))
+            .absoluteURL
+            .standardizedFileURL
+    }
+
+    private static func readSettings(at url: URL) -> [String: Any] {
+        (try? PiSettingsFile.read(url)) ?? [:]
+    }
+
+    private static func canonicalPath(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+}
+
+enum PiSessionCatalog {
+    static func allSessions(at roots: [URL]) -> [PiSavedSession] {
+        var sessionsByPath: [String: PiSavedSession] = [:]
+        for root in roots {
+            for session in allSessions(at: root) {
+                let path = URL(fileURLWithPath: session.path)
+                    .standardizedFileURL
+                    .resolvingSymlinksInPath()
+                    .path
+                sessionsByPath[path] = session
+            }
+        }
+        return sessionsByPath.values.sorted { $0.timestamp > $1.timestamp }
+    }
+
     static func allSessions(at root: URL) -> [PiSavedSession] {
         guard let enumerator = FileManager.default.enumerator(
             at: root,
