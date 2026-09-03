@@ -312,7 +312,7 @@
 
 /* Advanced runtime settings */
 "Advanced runtime" = "高级运行环境";
-"Network, provider, shell and branch-summary settings supported by the installed Pi runtime." = "配置当前 Pi 运行环境支持的网络、供应商、Shell 与分支总结选项。";
+"Network, provider, session, shell and branch-summary settings supported by the installed Pi runtime." = "配置当前 Pi 运行环境支持的网络、供应商、会话、Shell 与分支总结选项。";
 "Show advanced options" = "显示高级选项";
 "Network & provider" = "网络与供应商";
 "HTTP proxy" = "HTTP 代理";
@@ -322,6 +322,11 @@
 "WebSocket connect timeout (ms)" = "WebSocket 连接超时（毫秒）";
 "Provider timeout (ms)" = "供应商请求超时（毫秒）";
 "Provider maximum retries" = "供应商最大重试次数";
+"Session storage" = "会话存储";
+"Session directory" = "会话目录";
+"~/.pi/agent/sessions" = "~/.pi/agent/sessions";
+"Relative paths are resolved from the active Project or Global Chat directory. The session catalog always keeps Pi's default directory visible." = "相对路径以当前项目或全局聊天目录为基准解析；会话目录仍会保留 Pi 默认位置中的记录。";
+"PI_CODING_AGENT_SESSION_DIR currently overrides this setting: %@" = "PI_CODING_AGENT_SESSION_DIR 当前会覆盖此设置：%@";
 "Shell & package commands" = "Shell 与包命令";
 "Shell path" = "Shell 路径";
 "Pi default shell" = "Pi 默认 Shell";

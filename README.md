@@ -21,7 +21,7 @@
 - Global Knowledge：`~/.pi/knowledge`。
 - Project Knowledge：`<project>/.pi/knowledge`。
 - Task State：`~/.pi/agent/personal-pi-tasks.json`，记录 Submitted、Running、Waiting、Finished 和未读完成状态。
-- Settings：在 GUI 中分别编辑全局 `~/.pi/agent/settings.json` 和项目 `.pi/settings.json`，查看合并后的 Effective 配置，并管理默认模型、模型循环范围、按模型思考等级、思考预算、压缩、重试、消息投递、传输、图像与工具选项。折叠的 Advanced Runtime 区域覆盖网络与供应商超时、HTTP 代理、Shell/npm 命令、分支总结和警告配置。模型账户入口直接读取当前 Pi `/login` 暴露的供应商与登录方式，支持 Pi 原生登录、退出登录和模型目录刷新；OAuth 会自动打开授权页，API Key 通过临时安全输入交给 Pi 保存，Swift 不直接读取或解析 `auth.json`。
+- Settings：在 GUI 中分别编辑全局 `~/.pi/agent/settings.json` 和项目 `.pi/settings.json`，查看合并后的 Effective 配置，并管理默认模型、模型循环范围、按模型思考等级、思考预算、压缩、重试、消息投递、传输、图像与工具选项。折叠的 Advanced Runtime 区域覆盖网络与供应商超时、HTTP 代理、会话目录、Shell/npm 命令、分支总结和警告配置；会话总览会同步扫描 Pi 默认目录与所有已配置的有效 `sessionDir`。模型账户入口直接读取当前 Pi `/login` 暴露的供应商与登录方式，支持 Pi 原生登录、退出登录和模型目录刷新；OAuth 会自动打开授权页，API Key 通过临时安全输入交给 Pi 保存，Swift 不直接读取或解析 `auth.json`。
 - Slash Commands：Overview 和 Session 共用命令输入组件；输入 `/` 可发现并滚动浏览 GUI 命令、Pi Extensions、Prompt Templates 和 Skills 命令。GUI 原生命令包括模型与账户管理，以及 `/resume`、`/session`、`/tree`、`/fork`、`/clone`、`/export`、`/copy`、`/reload` 和带自定义要求的 `/compact`。会话工具栏也提供对应的可点击操作。
 - Account Status：provider readiness 通过 Pi 的无凭据 `auth check` 读取；Codex 限额通过本机 Codex App Server 的 `account/rateLimits/read` 读取真实窗口。Swift 不读取 API key 或 OAuth token。
 - Packages & Resources：独立页面整合 Pi 原生包管理，支持 Global/Project 安装、移除、单包或全部更新，并展示包提供的 Extensions、Skills、Prompt Templates、Themes。资源可以按作用域启用、禁用或继承，同时可管理额外本地资源路径。
