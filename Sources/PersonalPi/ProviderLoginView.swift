@@ -5,16 +5,20 @@ struct ProviderLoginView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: ProviderLoginViewModel
     @State private var searchText = ""
+    @State private var showingLogoutConfirmation = false
 
     init(
         agentDirectory: URL,
         workingDirectory: URL,
-        onAuthenticated: @escaping () -> Void
+        request: PiProviderAccountRequest,
+        onAuthenticationChanged: @escaping () -> Void
     ) {
         _viewModel = StateObject(wrappedValue: ProviderLoginViewModel(
             agentDirectory: agentDirectory,
             workingDirectory: workingDirectory,
-            onAuthenticated: onAuthenticated
+            intent: request.intent,
+            providerReference: request.providerReference,
+            onAuthenticationChanged: onAuthenticationChanged
         ))
     }
 
@@ -30,16 +34,24 @@ struct ProviderLoginView: View {
         .background(Theme.canvas)
         .task { viewModel.loadProviders() }
         .onDisappear { viewModel.cancelActiveLogin() }
+        .alert("Log out of provider?", isPresented: $showingLogoutConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Log out", role: .destructive) {
+                viewModel.logoutSelectedProvider()
+            }
+        } message: {
+            Text("Pi will remove the stored credential. Environment variables and external configuration are unchanged.")
+        }
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Configure model provider")
+                Text(LocalizedStringKey(viewModel.title))
                     .font(Theme.serif(22, weight: .medium))
                     .foregroundStyle(Theme.ink)
                     .accessibilityIdentifier("provider-login-heading")
-                Text("Providers and login methods are loaded from the installed Pi runtime, just like /login.")
+                Text(LocalizedStringKey(viewModel.subtitle))
                     .font(Theme.sans(11.5))
                     .foregroundStyle(Theme.muted)
             }
@@ -66,6 +78,8 @@ struct ProviderLoginView: View {
             providerSelection
         case .authenticating:
             authenticationProgress
+        case .working:
+            accountOperationProgress
         case .complete:
             completionView
         }
@@ -109,9 +123,7 @@ struct ProviderLoginView: View {
                     Image(systemName: "magnifyingglass")
                         .font(Theme.sans(22))
                         .foregroundStyle(Theme.pale)
-                    Text(LocalizedStringKey(
-                        searchText.isEmpty ? "No login providers available" : "No matching providers"
-                    ))
+                    Text(LocalizedStringKey(emptyProviderMessage))
                         .font(Theme.sans(12.5))
                         .foregroundStyle(Theme.muted)
                 }
@@ -144,12 +156,19 @@ struct ProviderLoginView: View {
 
     private var filteredProviders: [PiLoginProvider] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return viewModel.providers }
-        return viewModel.providers.filter {
+        guard !query.isEmpty else { return viewModel.visibleProviders }
+        return viewModel.visibleProviders.filter {
             $0.name.localizedCaseInsensitiveContains(query)
                 || $0.id.localizedCaseInsensitiveContains(query)
                 || $0.methods.contains(where: { $0.name.localizedCaseInsensitiveContains(query) })
         }
+    }
+
+    private var emptyProviderMessage: String {
+        if !searchText.isEmpty { return "No matching providers" }
+        return viewModel.intent == .logout
+            ? "No stored provider credentials"
+            : "No login providers available"
     }
 
     private func selectedProviderDetail(
@@ -167,7 +186,7 @@ struct ProviderLoginView: View {
                         .foregroundStyle(Theme.muted)
                 }
                 Spacer()
-                if provider.methods.count > 1 {
+                if viewModel.intent != .logout && provider.methods.count > 1 {
                     Picker("Login method", selection: $viewModel.selectedAuthType) {
                         ForEach(provider.methods) { option in
                             Text(methodLabel(option)).tag(Optional(option.type))
@@ -183,7 +202,11 @@ struct ProviderLoginView: View {
                 }
             }
 
-            if !method.interactive {
+            if viewModel.intent == .logout {
+                Label("Pi will remove this provider's stored credential", systemImage: "person.crop.circle.badge.minus")
+                    .font(Theme.sans(10.5))
+                    .foregroundStyle(Theme.muted)
+            } else if !method.interactive {
                 Label("This provider is configured outside Pi", systemImage: "info.circle")
                     .font(Theme.sans(10.5))
                     .foregroundStyle(Theme.warning)
@@ -275,6 +298,20 @@ struct ProviderLoginView: View {
         .padding(28)
     }
 
+    private var accountOperationProgress: some View {
+        VStack(spacing: 14) {
+            ProgressView()
+                .controlSize(.large)
+            Text(LocalizedStringKey(viewModel.statusMessage))
+                .font(Theme.sans(13, weight: .medium))
+                .foregroundStyle(Theme.ink)
+            Text(viewModel.selectedProvider?.name ?? "")
+                .font(Theme.sans(11.5))
+                .foregroundStyle(Theme.muted)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     @ViewBuilder
     private func promptView(_ prompt: PiProviderAuthPrompt) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -323,7 +360,7 @@ struct ProviderLoginView: View {
                     .foregroundStyle(Theme.positive)
             }
             .frame(width: 58, height: 58)
-            Text("Provider connected")
+            Text(LocalizedStringKey(viewModel.completionMessage))
                 .font(Theme.serif(23, weight: .medium))
                 .foregroundStyle(Theme.ink)
             Text(viewModel.selectedProvider?.name ?? "")
@@ -351,23 +388,33 @@ struct ProviderLoginView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Text("Authentication is handled by Pi; credential values are not displayed or retained.")
+            Text(LocalizedStringKey(viewModel.footerMessage))
                 .font(Theme.mono(9.5))
                 .foregroundStyle(Theme.faint)
             Spacer()
             switch viewModel.phase {
             case .selecting:
                 Button("Cancel") { dismiss() }
-                Button(viewModel.selectedMethod?.type == .oauth ? "Continue to authorization" : "Continue") {
-                    viewModel.beginLogin()
+                if viewModel.canLogOut {
+                    Button("Log out", role: .destructive) {
+                        showingLogoutConfirmation = true
+                    }
+                    .accessibilityIdentifier("logout-provider-button")
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(viewModel.selectedMethod?.interactive != true)
-                .accessibilityIdentifier("begin-provider-login-button")
+                if viewModel.intent != .logout {
+                    Button(viewModel.selectedMethod?.type == .oauth ? "Continue to authorization" : "Continue") {
+                        viewModel.beginLogin()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.selectedMethod?.interactive != true)
+                    .accessibilityIdentifier("begin-provider-login-button")
+                }
             case .authenticating:
                 Button("Cancel login") {
                     viewModel.cancelActiveLogin()
                 }
+            case .working:
+                EmptyView()
             case .complete:
                 Button("Done") { dismiss() }
                     .buttonStyle(.borderedProminent)
@@ -419,7 +466,9 @@ private struct ProviderLoginRow: View {
                     }
                 }
                 if provider.configured {
-                    Text("Configured")
+                    Text(LocalizedStringKey(
+                        provider.storedAuthType == nil ? "Configured externally" : "Stored credential"
+                    ))
                         .font(Theme.mono(9))
                         .foregroundStyle(Theme.positive)
                 }
@@ -442,6 +491,7 @@ private final class ProviderLoginViewModel: ObservableObject {
     enum Phase {
         case selecting
         case authenticating
+        case working
         case complete
     }
 
@@ -458,10 +508,13 @@ private final class ProviderLoginViewModel: ObservableObject {
     @Published var infoLinks: [PiProviderAuthLink] = []
     @Published var prompt: PiProviderAuthPrompt?
     @Published var promptInput = ""
+    @Published var completionMessage = "Provider connected"
 
     private let agentDirectory: URL
     private let workingDirectory: URL
-    private let onAuthenticated: () -> Void
+    let intent: PiProviderAccountIntent
+    private let providerReference: String?
+    private let onAuthenticationChanged: () -> Void
     private var loginProcess: PiProviderAuthLoginProcess?
     private var promptID: String?
     private var didLoad = false
@@ -470,11 +523,39 @@ private final class ProviderLoginViewModel: ObservableObject {
     init(
         agentDirectory: URL,
         workingDirectory: URL,
-        onAuthenticated: @escaping () -> Void
+        intent: PiProviderAccountIntent,
+        providerReference: String?,
+        onAuthenticationChanged: @escaping () -> Void
     ) {
         self.agentDirectory = agentDirectory
         self.workingDirectory = workingDirectory
-        self.onAuthenticated = onAuthenticated
+        self.intent = intent
+        self.providerReference = providerReference
+        self.onAuthenticationChanged = onAuthenticationChanged
+    }
+
+    var title: String {
+        switch intent {
+        case .manage: "Model provider accounts"
+        case .login: "Log in to model provider"
+        case .logout: "Log out of model provider"
+        }
+    }
+
+    var subtitle: String {
+        intent == .logout
+            ? "Only credentials stored by Pi are listed. External environment configuration is unchanged."
+            : "Providers and login methods are loaded from the installed Pi runtime, just like /login."
+    }
+
+    var footerMessage: String {
+        intent == .logout
+            ? "Logout is handled by Pi and removes only its stored credential."
+            : "Authentication is handled by Pi; credential values are not displayed or retained."
+    }
+
+    var visibleProviders: [PiLoginProvider] {
+        intent == .logout ? providers.filter { $0.storedAuthType != nil } : providers
     }
 
     var selectedProvider: PiLoginProvider? {
@@ -485,6 +566,10 @@ private final class ProviderLoginViewModel: ObservableObject {
         guard let provider = selectedProvider else { return nil }
         return provider.methods.first(where: { $0.type == selectedAuthType })
             ?? provider.preferredMethod
+    }
+
+    var canLogOut: Bool {
+        selectedProvider?.storedAuthType != nil && intent != .login
     }
 
     func loadProviders(force: Bool = false) {
@@ -502,7 +587,17 @@ private final class ProviderLoginViewModel: ObservableObject {
                 switch result {
                 case .success(let providers):
                     self.providers = providers
-                    if let first = providers.first {
+                    let candidates = self.visibleProviders
+                    if let reference = self.providerReference?.lowercased(),
+                       let match = candidates.first(where: {
+                           $0.id.lowercased() == reference || $0.name.lowercased() == reference
+                       }) {
+                        self.select(match)
+                    } else if let reference = self.providerReference {
+                        self.selectedProviderID = nil
+                        self.selectedAuthType = nil
+                        self.errorMessage = "Provider not found: \(reference)"
+                    } else if let first = candidates.first {
                         self.select(first)
                     }
                 case .failure(let error):
@@ -514,11 +609,14 @@ private final class ProviderLoginViewModel: ObservableObject {
 
     func select(_ provider: PiLoginProvider) {
         selectedProviderID = provider.id
-        selectedAuthType = provider.preferredMethod?.type
+        selectedAuthType = intent == .logout
+            ? provider.storedAuthType
+            : provider.configuredAuthType ?? provider.preferredMethod?.type
         errorMessage = nil
     }
 
     func beginLogin() {
+        guard intent != .logout else { return }
         guard let provider = selectedProvider,
               let method = selectedMethod,
               method.interactive else { return }
@@ -609,13 +707,40 @@ private final class ProviderLoginViewModel: ObservableObject {
             if success {
                 phase = .complete
                 statusMessage = "Authentication complete"
+                completionMessage = "Provider connected"
                 markSelectedProviderConfigured()
-                onAuthenticated()
+                onAuthenticationChanged()
             } else if error != "Login cancelled" {
                 phase = .selecting
                 errorMessage = error ?? "Pi authentication failed"
             } else {
                 phase = .selecting
+            }
+        }
+    }
+
+    func logoutSelectedProvider() {
+        guard let provider = selectedProvider, provider.storedAuthType != nil else { return }
+        errorMessage = nil
+        statusMessage = "Removing stored provider credential…"
+        phase = .working
+        PiProviderAuthBridge.logoutProvider(
+            agentDirectory: agentDirectory,
+            workingDirectory: workingDirectory,
+            providerID: provider.id
+        ) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    self.phase = .complete
+                    self.completionMessage = "Provider logged out"
+                    self.markSelectedProviderLoggedOut()
+                    self.onAuthenticationChanged()
+                case .failure(let error):
+                    self.phase = .selecting
+                    self.errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -661,6 +786,22 @@ private final class ProviderLoginViewModel: ObservableObject {
                 name: provider.name,
                 configured: true,
                 configuredAuthType: selectedAuthType,
+                storedAuthType: selectedAuthType,
+                methods: provider.methods
+            )
+        }
+    }
+
+    private func markSelectedProviderLoggedOut() {
+        guard let selectedProviderID else { return }
+        providers = providers.map { provider in
+            guard provider.id == selectedProviderID else { return provider }
+            return PiLoginProvider(
+                id: provider.id,
+                name: provider.name,
+                configured: false,
+                configuredAuthType: nil,
+                storedAuthType: nil,
                 methods: provider.methods
             )
         }

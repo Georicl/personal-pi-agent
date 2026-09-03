@@ -48,6 +48,8 @@ Account cards call Pi's `auth check` command without `--credentials`. Swift rece
 
 The Settings provider picker is not a custom-provider form. A bundled local bridge loads the installed Pi SDK for the active cwd, including trusted project provider registrations, and returns the same provider/authentication metadata used by `/login`. Authentication is executed by `ModelRuntime.login`: OAuth and device-code URLs are handed to macOS for automatic opening, while other Pi prompts are rendered in the sheet. Credential values are neither printed nor retained by the GUI.
 
+The same adapter lists stored credential metadata through `listCredentials`, removes selected stored credentials with `ModelRuntime.logout`, and refreshes model catalogs with `ModelRuntime.refresh`. A successful login refreshes that provider's catalog, and Settings also provides an explicit full refresh. `/login [provider]` and `/logout [provider]` are GUI-native slash commands because Pi RPC intentionally does not execute built-in TUI commands.
+
 ## Verified RPC surface
 
 Personal Pi currently uses:
@@ -55,6 +57,7 @@ Personal Pi currently uses:
 - `get_state`
 - `get_messages`
 - `get_available_models`
+- `get_available_thinking_levels`
 - `get_commands`
 - `set_model`
 - `set_thinking_level`
@@ -70,12 +73,12 @@ Personal Pi currently uses:
 Pi 0.84.3 also documents, but the GUI does not yet expose:
 
 - steering and follow-up queues
-- model/thinking cycling and available thinking levels
+- model and thinking cycling commands
 - standalone bash execution and cancellation
 - HTML export
 - `fork`, `clone`, `get_fork_messages`, `get_entries`, and `get_tree`
 
-The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. It covers model defaults, compaction thresholds, retry timing, message delivery, provider transport, image handling, built-in tools, and resource paths. Each editable scope is loaded independently, and saving reapplies the GUI-owned fields to the latest file contents before writing. The Session composer merges native GUI actions with `get_commands` results, so extension commands, prompt templates, and skill commands are available through the slash-command palette.
+The Settings page edits common Global and Project Pi settings while preserving unknown JSON keys. It covers model defaults, `enabledModels`, `modelThinkingLevels`, `thinkingBudgets`, compaction thresholds, retry timing, message delivery, provider transport, image handling, built-in tools, and resource paths. Model thinking choices are derived from the full model metadata returned by Pi. Each editable scope is loaded independently, and saving reapplies the GUI-owned fields to the latest file contents before writing. The Session composer merges native GUI actions with `get_commands` results, so GUI-native commands, extension commands, prompt templates, and skill commands are available through the slash-command palette.
 
 The GUI handles these event families today:
 

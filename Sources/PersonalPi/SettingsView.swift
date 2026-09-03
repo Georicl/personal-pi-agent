@@ -20,7 +20,6 @@ private enum PiOptionalSetting: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.locale) private var locale
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.system.rawValue
 
     @State private var selectedScope: PiSettingsScope = .global
@@ -30,6 +29,14 @@ struct SettingsView: View {
     @State private var provider = ""
     @State private var model = ""
     @State private var thinkingLevel = ""
+    @State private var enabledModels = ""
+    @State private var modelThinkingLevels: [String: String] = [:]
+    @State private var selectedThinkingModel = ""
+    @State private var thinkingBudgetMinimal = ""
+    @State private var thinkingBudgetLow = ""
+    @State private var thinkingBudgetMedium = ""
+    @State private var thinkingBudgetHigh = ""
+    @State private var showingAdvancedThinking = false
     @State private var theme = ""
     @State private var compaction = PiOptionalSetting.inherited
     @State private var compactionReserveTokens = ""
@@ -52,7 +59,7 @@ struct SettingsView: View {
     @State private var status = ""
     @State private var hasSourceError = false
     @State private var statusIsError = false
-    @State private var showingProviderLogin = false
+    @State private var isRefreshingModels = false
 
     private let builtInTools = ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"]
 
@@ -103,20 +110,8 @@ struct SettingsView: View {
                 load()
             }
         }
-        .sheet(isPresented: $showingProviderLogin) {
-            ProviderLoginView(
-                agentDirectory: agentDirectory,
-                workingDirectory: URL(
-                    fileURLWithPath: appState.activeWorkingDirectory,
-                    isDirectory: true
-                )
-            ) {
-                status = "Provider authentication updated · Pi runtime reloading"
-                statusIsError = false
-                appState.applySettingsChange()
-                appState.usageStore.refresh()
-            }
-                .environment(\.locale, locale)
+        .onChange(of: appState.availableModels) { _ in
+            ensureThinkingModelSelection()
         }
     }
 
@@ -176,48 +171,301 @@ struct SettingsView: View {
         SettingsCard(title: "Model & thinking", subtitle: "Defaults used when Pi starts in this scope.") {
             VStack(spacing: 13) {
                 Group {
-                    SettingsTextRow(title: "Provider", placeholder: inheritedPlaceholder("provider"), text: $provider)
-                    SettingsTextRow(title: "Model", placeholder: inheritedPlaceholder("model"), text: $model)
-
-                    if !appState.availableModels.isEmpty {
-                        HStack {
-                            Text("Available models")
-                                .font(Theme.sans(12))
-                                .foregroundStyle(Theme.secondary)
-                                .frame(width: 150, alignment: .leading)
-                            Menu("Choose configured model…") {
-                                ForEach(appState.availableModels) { option in
-                                    Button(option.identity) {
-                                        provider = option.provider
-                                        model = option.modelId
-                                    }
-                                }
-                            }
-                            .menuStyle(.borderlessButton)
-                            Spacer()
-                        }
-                    }
+                    defaultProviderRow
+                    defaultModelRow
 
                     SettingsPickerRow(title: "Thinking level") {
                         Picker("Thinking level", selection: $thinkingLevel) {
                             Text(LocalizedStringKey(inheritLabel)).tag("")
-                            ForEach(AppState.thinkingLevels, id: \.self) { level in
+                            ForEach(defaultThinkingLevelChoices, id: \.self) { level in
                                 Text(LocalizedStringKey(choiceLabel(level))).tag(level)
                             }
                         }
                         .labelsHidden()
                         .frame(width: 210)
+                        .disabled(isReadOnly)
                     }
 
+                    modelCyclingRow
+                    perModelThinkingRow
+
+                    DisclosureGroup("Advanced thinking budgets", isExpanded: $showingAdvancedThinking) {
+                        VStack(spacing: 10) {
+                            SettingsTextRow(title: "Minimal budget", placeholder: "Pi default", text: $thinkingBudgetMinimal)
+                            SettingsTextRow(title: "Low budget", placeholder: "Pi default", text: $thinkingBudgetLow)
+                            SettingsTextRow(title: "Medium budget", placeholder: "Pi default", text: $thinkingBudgetMedium)
+                            SettingsTextRow(title: "High budget", placeholder: "Pi default", text: $thinkingBudgetHigh)
+                        }
+                        .padding(.top, 10)
+                        .disabled(isReadOnly)
+                    }
+                    .font(Theme.sans(11.5, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+
                     SettingsTextRow(title: "Pi CLI theme", placeholder: selectedScope == .project ? "Inherit Global theme" : "Pi default (dark)", text: $theme)
+                        .disabled(isReadOnly)
                 }
-                .disabled(isReadOnly)
 
                 Hairline()
 
                 providerLoginRow
             }
         }
+    }
+
+    private var defaultProviderRow: some View {
+        SettingsPickerRow(title: "Provider") {
+            Picker("Provider", selection: $provider) {
+                Text(LocalizedStringKey(inheritLabel)).tag("")
+                ForEach(providerChoices, id: \.self) { providerID in
+                    Text(providerID).tag(providerID)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 300)
+            .disabled(isReadOnly)
+            .onChange(of: provider) { newProvider in
+                let resolvedProvider = newProvider.isEmpty ? inheritedProvider : newProvider
+                let available = appState.availableModels.filter { $0.provider == resolvedProvider }
+                if !available.isEmpty && !available.contains(where: { $0.modelId == model }) {
+                    model = available.first?.modelId ?? ""
+                }
+            }
+            .accessibilityIdentifier("default-provider-picker")
+        }
+    }
+
+    private var defaultModelRow: some View {
+        SettingsPickerRow(title: "Model") {
+            Picker("Model", selection: $model) {
+                Text(LocalizedStringKey(inheritLabel)).tag("")
+                ForEach(modelChoices, id: \.self) { modelID in
+                    Text(modelChoiceLabel(modelID)).tag(modelID)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 420)
+            .disabled(isReadOnly || effectiveProviderForModelSelection.isEmpty)
+            .accessibilityIdentifier("default-model-picker")
+        }
+    }
+
+    private var modelCyclingRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 16) {
+                Text("Model cycling")
+                    .font(Theme.sans(12))
+                    .foregroundStyle(Theme.secondary)
+                    .frame(width: 150, alignment: .leading)
+                Menu {
+                    ForEach(providerChoices, id: \.self) { providerID in
+                        let models = appState.availableModels.filter { $0.provider == providerID }
+                        if !models.isEmpty {
+                            Section(providerID) {
+                                ForEach(models) { option in
+                                    Button {
+                                        toggleEnabledModel(option.identity)
+                                    } label: {
+                                        Label(
+                                            option.displayName,
+                                            systemImage: enabledModelPatterns.contains(option.identity)
+                                                ? "checkmark.circle.fill"
+                                                : "circle"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Text(enabledModelSummary)
+                }
+                .menuStyle(.borderlessButton)
+                .disabled(isReadOnly || appState.availableModels.isEmpty)
+                .accessibilityIdentifier("enabled-models-menu")
+                if !enabledModelPatterns.isEmpty && !isReadOnly {
+                    Button("Clear") { enabledModels = "" }
+                        .buttonStyle(.borderless)
+                }
+                Spacer()
+            }
+
+            DisclosureGroup("Advanced model patterns") {
+                TextEditor(text: $enabledModels)
+                    .font(Theme.mono(10.5))
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .frame(minHeight: 54, maxHeight: 76)
+                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.line, lineWidth: 1))
+                    .disabled(isReadOnly)
+                    .accessibilityIdentifier("enabled-model-patterns-editor")
+                Text("One provider/model ID or Pi glob pattern per line.")
+                    .font(Theme.sans(9.5))
+                    .foregroundStyle(Theme.faint)
+            }
+            .font(Theme.sans(10.5, weight: .medium))
+            .foregroundStyle(Theme.muted)
+        }
+    }
+
+    private var perModelThinkingRow: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Text("Per-model thinking")
+                .font(Theme.sans(12))
+                .foregroundStyle(Theme.secondary)
+                .frame(width: 150, alignment: .leading)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 10) {
+                    Menu {
+                        ForEach(thinkingModelChoices, id: \.self) { identity in
+                            Button(modelIdentityLabel(identity)) {
+                                selectedThinkingModel = identity
+                            }
+                        }
+                    } label: {
+                        Text(LocalizedStringKey(selectedThinkingModelLabel))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 270, alignment: .leading)
+                    .disabled(isReadOnly || thinkingModelChoices.isEmpty)
+                    .accessibilityIdentifier("thinking-model-picker")
+
+                    Picker("Per-model thinking", selection: thinkingOverrideBinding) {
+                        Text(LocalizedStringKey(inheritLabel)).tag("")
+                        ForEach(selectedModelThinkingChoices, id: \.self) { level in
+                            Text(LocalizedStringKey(choiceLabel(level))).tag(level)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 150)
+                    .disabled(isReadOnly || selectedThinkingModel.isEmpty)
+                    .accessibilityIdentifier("thinking-model-level-picker")
+                }
+                Text(modelThinkingSummary)
+                    .font(Theme.mono(9.5))
+                    .foregroundStyle(Theme.faint)
+            }
+            Spacer()
+        }
+    }
+
+    private var providerChoices: [String] {
+        var choices = Set(appState.availableModels.map(\.provider))
+        if !provider.isEmpty { choices.insert(provider) }
+        return choices.sorted()
+    }
+
+    private var modelChoices: [String] {
+        var choices = Set(appState.availableModels.filter {
+            $0.provider == effectiveProviderForModelSelection
+        }.map(\.modelId))
+        if !model.isEmpty { choices.insert(model) }
+        return choices.sorted()
+    }
+
+    private var selectedDefaultModel: PiModelOption? {
+        appState.availableModels.first {
+            $0.provider == effectiveProviderForModelSelection && $0.modelId == effectiveModelForThinking
+        }
+    }
+
+    private var inheritedProvider: String {
+        selectedScope == .project ? globalDocument["defaultProvider"] as? String ?? "" : ""
+    }
+
+    private var effectiveProviderForModelSelection: String {
+        provider.isEmpty ? inheritedProvider : provider
+    }
+
+    private var inheritedModel: String {
+        selectedScope == .project ? globalDocument["defaultModel"] as? String ?? "" : ""
+    }
+
+    private var effectiveModelForThinking: String {
+        model.isEmpty ? inheritedModel : model
+    }
+
+    private var defaultThinkingLevelChoices: [String] {
+        var choices = selectedDefaultModel?.supportedThinkingLevels ?? AppState.thinkingLevels
+        if !thinkingLevel.isEmpty && !choices.contains(thinkingLevel) {
+            choices.append(thinkingLevel)
+        }
+        return choices
+    }
+
+    private var enabledModelPatterns: [String] {
+        enabledModels.split { $0.isNewline }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var enabledModelSummary: LocalizedStringKey {
+        if enabledModelPatterns.isEmpty { return LocalizedStringKey(inheritLabel) }
+        return "\(enabledModelPatterns.count) models or patterns"
+    }
+
+    private var thinkingModelChoices: [String] {
+        var choices = Set(appState.availableModels.map(\.identity))
+        choices.formUnion(modelThinkingLevels.keys)
+        return choices.sorted()
+    }
+
+    private var selectedThinkingModelLabel: String {
+        selectedThinkingModel.isEmpty
+            ? "Choose model…"
+            : modelIdentityLabel(selectedThinkingModel)
+    }
+
+    private var modelThinkingSummary: LocalizedStringKey {
+        if modelThinkingLevels.isEmpty { return "No per-model overrides" }
+        return "\(modelThinkingLevels.count) per-model overrides"
+    }
+
+    private var selectedModelThinkingChoices: [String] {
+        var choices = appState.availableModels.first(where: { $0.identity == selectedThinkingModel })?
+            .supportedThinkingLevels ?? AppState.thinkingLevels
+        if let current = modelThinkingLevels[selectedThinkingModel], !choices.contains(current) {
+            choices.append(current)
+        }
+        return choices
+    }
+
+    private var thinkingOverrideBinding: Binding<String> {
+        Binding(
+            get: { modelThinkingLevels[selectedThinkingModel] ?? "" },
+            set: { value in
+                if value.isEmpty { modelThinkingLevels.removeValue(forKey: selectedThinkingModel) }
+                else { modelThinkingLevels[selectedThinkingModel] = value }
+            }
+        )
+    }
+
+    private func modelChoiceLabel(_ modelID: String) -> String {
+        guard let option = appState.availableModels.first(where: {
+            $0.provider == effectiveProviderForModelSelection && $0.modelId == modelID
+        }) else { return modelID }
+        return option.displayName == modelID ? modelID : "\(option.displayName) · \(modelID)"
+    }
+
+    private func modelIdentityLabel(_ identity: String) -> String {
+        guard let option = appState.availableModels.first(where: { $0.identity == identity }) else {
+            return identity
+        }
+        return option.displayName == option.identity
+            ? option.identity
+            : "\(option.displayName) · \(option.identity)"
+    }
+
+    private func toggleEnabledModel(_ identity: String) {
+        var patterns = enabledModelPatterns
+        if let index = patterns.firstIndex(of: identity) {
+            patterns.remove(at: index)
+        } else {
+            patterns.append(identity)
+        }
+        enabledModels = patterns.joined(separator: "\n")
     }
 
     private var providerLoginRow: some View {
@@ -231,8 +479,18 @@ struct SettingsView: View {
                     .foregroundStyle(Theme.faint)
             }
             Spacer()
-            Button("Configure provider") {
-                showingProviderLogin = true
+            if isRefreshingModels {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            Button("Refresh models") {
+                refreshModelCatalog()
+            }
+            .buttonStyle(.borderless)
+            .disabled(isRefreshingModels)
+            .accessibilityIdentifier("refresh-model-catalog-button")
+            Button("Manage accounts") {
+                appState.presentProviderAccounts()
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("configure-model-provider-button")
@@ -415,18 +673,35 @@ struct SettingsView: View {
         )
     }
 
-    private func inheritedPlaceholder(_ field: String) -> String {
-        guard selectedScope == .project else { return "Pi default" }
-        let key = field == "provider" ? "defaultProvider" : "defaultModel"
-        if let value = globalDocument[key] as? String, !value.isEmpty {
-            return "Inherit \(value)"
-        }
-        return "Inherit Global"
-    }
-
     private func prepareScopeAndLoad() {
         selectedScope = appState.workspaceScope == .workspace ? .project : .global
         load()
+    }
+
+    private func refreshModelCatalog() {
+        guard !isRefreshingModels else { return }
+        isRefreshingModels = true
+        status = "Refreshing model catalog…"
+        statusIsError = false
+        PiProviderAuthBridge.refreshModelCatalog(
+            agentDirectory: agentDirectory,
+            workingDirectory: URL(
+                fileURLWithPath: appState.activeWorkingDirectory,
+                isDirectory: true
+            )
+        ) { result in
+            Task { @MainActor in
+                isRefreshingModels = false
+                switch result {
+                case .success:
+                    status = "Model catalog refreshed · Pi runtime reloading"
+                    appState.applySettingsChange()
+                case .failure(let error):
+                    status = error.localizedDescription
+                    statusIsError = true
+                }
+            }
+        }
     }
 
     private func load() {
@@ -461,6 +736,12 @@ struct SettingsView: View {
         provider = document["defaultProvider"] as? String ?? ""
         model = document["defaultModel"] as? String ?? ""
         thinkingLevel = document["defaultThinkingLevel"] as? String ?? ""
+        enabledModels = stringList(document["enabledModels"])
+        modelThinkingLevels = stringDictionary(document["modelThinkingLevels"])
+        thinkingBudgetMinimal = numberString(PiSettingsFile.value(in: document, path: ["thinkingBudgets", "minimal"]))
+        thinkingBudgetLow = numberString(PiSettingsFile.value(in: document, path: ["thinkingBudgets", "low"]))
+        thinkingBudgetMedium = numberString(PiSettingsFile.value(in: document, path: ["thinkingBudgets", "medium"]))
+        thinkingBudgetHigh = numberString(PiSettingsFile.value(in: document, path: ["thinkingBudgets", "high"]))
         theme = document["theme"] as? String ?? ""
         compaction = optionalMode(PiSettingsFile.value(in: document, path: ["compaction", "enabled"]))
         compactionReserveTokens = numberString(PiSettingsFile.value(in: document, path: ["compaction", "reserveTokens"]))
@@ -485,6 +766,7 @@ struct SettingsView: View {
         skills = stringList(document["skills"])
         prompts = stringList(document["prompts"])
         extensions = stringList(document["extensions"])
+        ensureThinkingModelSelection()
     }
 
     private func save() {
@@ -494,7 +776,11 @@ struct SettingsView: View {
             ("Recent tokens to keep", compactionKeepRecentTokens),
             ("Maximum retries", retryCount),
             ("Retry base delay", retryBaseDelayMs),
-            ("Maximum retry delay", providerMaxRetryDelayMs)
+            ("Maximum retry delay", providerMaxRetryDelayMs),
+            ("Minimal thinking budget", thinkingBudgetMinimal),
+            ("Low thinking budget", thinkingBudgetLow),
+            ("Medium thinking budget", thinkingBudgetMedium),
+            ("High thinking budget", thinkingBudgetHigh)
         ]
         for (name, value) in integerFields {
             guard PiSettingsFile.isOptionalNonnegativeInteger(value) else {
@@ -518,6 +804,12 @@ struct SettingsView: View {
         PiSettingsFile.setString(provider, key: "defaultProvider", in: &document)
         PiSettingsFile.setString(model, key: "defaultModel", in: &document)
         PiSettingsFile.setString(thinkingLevel, key: "defaultThinkingLevel", in: &document)
+        PiSettingsFile.setStringList(enabledModels, key: "enabledModels", in: &document)
+        PiSettingsFile.setStringDictionary(modelThinkingLevels, key: "modelThinkingLevels", in: &document)
+        PiSettingsFile.setOptionalInt(thinkingBudgetMinimal, path: ["thinkingBudgets", "minimal"], in: &document)
+        PiSettingsFile.setOptionalInt(thinkingBudgetLow, path: ["thinkingBudgets", "low"], in: &document)
+        PiSettingsFile.setOptionalInt(thinkingBudgetMedium, path: ["thinkingBudgets", "medium"], in: &document)
+        PiSettingsFile.setOptionalInt(thinkingBudgetHigh, path: ["thinkingBudgets", "high"], in: &document)
         PiSettingsFile.setString(theme, key: "theme", in: &document)
         PiSettingsFile.setOptionalBool(compaction, path: ["compaction", "enabled"], in: &document)
         PiSettingsFile.setOptionalInt(compactionReserveTokens, path: ["compaction", "reserveTokens"], in: &document)
@@ -562,8 +854,29 @@ struct SettingsView: View {
         (value as? [String] ?? []).joined(separator: "\n")
     }
 
+    private func stringDictionary(_ value: Any?) -> [String: String] {
+        guard let object = value as? [String: Any] else { return [:] }
+        return object.reduce(into: [:]) { result, entry in
+            if let string = entry.value as? String {
+                result[entry.key] = string
+            }
+        }
+    }
+
     private func numberString(_ value: Any?) -> String {
         (value as? NSNumber)?.stringValue ?? ""
+    }
+
+    private func ensureThinkingModelSelection() {
+        guard !thinkingModelChoices.contains(selectedThinkingModel) else { return }
+        let resolvedProvider = provider.isEmpty ? inheritedProvider : provider
+        let resolvedModel = model.isEmpty ? inheritedModel : model
+        let defaultIdentity = resolvedProvider.isEmpty || resolvedModel.isEmpty
+            ? nil
+            : "\(resolvedProvider)/\(resolvedModel)"
+        selectedThinkingModel = defaultIdentity.flatMap {
+            thinkingModelChoices.contains($0) ? $0 : nil
+        } ?? modelThinkingLevels.keys.sorted().first ?? thinkingModelChoices.first ?? ""
     }
 
     private func choiceLabel(_ value: String) -> String {
@@ -712,6 +1025,15 @@ enum PiSettingsFile {
         let values = raw.split { $0.isNewline }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+        if values.isEmpty { object.removeValue(forKey: key) }
+        else { object[key] = values }
+    }
+
+    static func setStringDictionary(
+        _ values: [String: String],
+        key: String,
+        in object: inout [String: Any]
+    ) {
         if values.isEmpty { object.removeValue(forKey: key) }
         else { object[key] = values }
     }

@@ -28,6 +28,9 @@ final class PersonalPiUITests: XCTestCase {
         XCTAssertTrue(headingExists)
         let languageExists = app.staticTexts["界面语言"].exists
         XCTAssertTrue(languageExists)
+        XCTAssertTrue(app.popUpButtons["default-provider-picker"].exists)
+        XCTAssertTrue(app.popUpButtons["default-model-picker"].exists)
+        XCTAssertTrue(app.buttons["enabled-models-menu"].exists)
         let overviewExists = app.buttons["总览"].exists
         XCTAssertTrue(overviewExists)
     }
@@ -67,7 +70,7 @@ final class PersonalPiUITests: XCTestCase {
 
         let heading = app.staticTexts["provider-login-heading"]
         XCTAssertTrue(heading.waitForExistence(timeout: 4))
-        XCTAssertEqual(heading.value as? String, "配置模型供应商")
+        XCTAssertEqual(heading.value as? String, "模型供应商账户")
 
         let codexProvider = app.buttons["provider-row-openai-codex"]
         let deepSeekProvider = app.buttons["provider-row-deepseek"]
@@ -75,6 +78,25 @@ final class PersonalPiUITests: XCTestCase {
         XCTAssertTrue(deepSeekProvider.exists)
         codexProvider.click()
         XCTAssertTrue(app.buttons["begin-provider-login-button"].exists)
+        XCTAssertTrue(app.buttons["logout-provider-button"].exists)
+    }
+
+    @MainActor
+    func testLogoutSlashCommandOpensStoredProviderPicker() {
+        let app = launchApp(language: "zh-Hans")
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        let composer = app.textFields["composer-input"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 4))
+        composer.click()
+        composer.typeText("/logout deepseek")
+        composer.typeKey(.return, modifierFlags: [])
+
+        let heading = app.staticTexts["provider-login-heading"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 4))
+        XCTAssertEqual(heading.value as? String, "退出模型供应商")
+        XCTAssertTrue(app.buttons["provider-row-deepseek"].exists)
+        XCTAssertTrue(app.buttons["logout-provider-button"].exists)
     }
 
     @MainActor

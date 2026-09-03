@@ -83,6 +83,18 @@ enum PiActivityState: Sendable {
     case failed
 }
 
+enum PiProviderAccountIntent: String, Sendable {
+    case manage
+    case login
+    case logout
+}
+
+struct PiProviderAccountRequest: Identifiable, Sendable {
+    let id = UUID()
+    let intent: PiProviderAccountIntent
+    let providerReference: String?
+}
+
 struct PiActivity: Identifiable, Sendable {
     let id: String
     var toolName: String
@@ -204,6 +216,7 @@ final class AppState: ObservableObject {
     @Published private(set) var sessionModel = "Model not selected"
     @Published private(set) var sessionId: String?
     @Published private(set) var availableModels: [PiModelOption] = []
+    @Published private(set) var availableThinkingLevels = ["off"]
     @Published private(set) var availableCommands: [PiSlashCommand] = AppState.nativeCommands
     @Published private(set) var thinkingLevel = "off"
     @Published private(set) var savedSessions: [PiSavedSession] = []
@@ -211,6 +224,7 @@ final class AppState: ObservableObject {
     @Published private(set) var workspace: PiWorkspace
     @Published private(set) var workspaces: [PiWorkspace]
     @Published var sessionProjectFilter: String?
+    @Published var providerAccountRequest: PiProviderAccountRequest?
 
     private var pendingPrompt: String?
     private var pendingNewSession = false
@@ -463,6 +477,7 @@ final class AppState: ObservableObject {
                 if success {
                     self.sessionModel = model.identity
                     self.agentStatus = "Ready"
+                    self.loadAvailableThinkingLevels()
                 } else {
                     self.agentStatus = "Unable to switch model"
                 }
@@ -521,6 +536,7 @@ final class AppState: ObservableObject {
                 self.sessionModel = state.model ?? "Model not selected"
                 self.thinkingLevel = state.thinkingLevel ?? self.thinkingLevel
                 self.agentStatus = state.isStreaming ? "Thinking…" : "Ready"
+                self.loadAvailableThinkingLevels()
             }
         }
         if loadMessages {
@@ -544,6 +560,29 @@ final class AppState: ObservableObject {
                 self?.availableModels = models
             }
         }
+    }
+
+    private func loadAvailableThinkingLevels() {
+        guard isPiRunning else {
+            availableThinkingLevels = ["off"]
+            return
+        }
+        piClient.requestAvailableThinkingLevels { [weak self] levels in
+            Task { @MainActor in
+                self?.availableThinkingLevels = levels
+            }
+        }
+    }
+
+    func presentProviderAccounts(
+        intent: PiProviderAccountIntent = .manage,
+        providerReference: String? = nil
+    ) {
+        let reference = providerReference?.trimmingCharacters(in: .whitespacesAndNewlines)
+        providerAccountRequest = PiProviderAccountRequest(
+            intent: intent,
+            providerReference: reference?.isEmpty == false ? reference : nil
+        )
     }
 
     func refreshCommands() {
@@ -610,9 +649,11 @@ final class AppState: ObservableObject {
                 agentStatus = "Unknown model: \(argument)"
             }
         case "thinking":
-            guard Self.thinkingLevels.contains(argument.lowercased()) else {
+            guard availableThinkingLevels.contains(argument.lowercased()) else {
                 selectedSection = .settings
-                agentStatus = argument.isEmpty ? "Choose a thinking level in Settings" : "Unknown thinking level: \(argument)"
+                agentStatus = argument.isEmpty
+                    ? "Choose a thinking level in Settings"
+                    : "Thinking level unavailable for this model: \(argument)"
                 return true
             }
             selectThinkingLevel(argument.lowercased())
@@ -629,6 +670,14 @@ final class AppState: ObservableObject {
                     if success { self.refreshSavedSessions() }
                 }
             }
+        case "login":
+            selectedSection = .settings
+            presentProviderAccounts(intent: .login, providerReference: argument)
+            agentStatus = "Choose a provider to log in"
+        case "logout":
+            selectedSection = .settings
+            presentProviderAccounts(intent: .logout, providerReference: argument)
+            agentStatus = "Choose a provider to log out"
         default:
             return false
         }
@@ -643,7 +692,9 @@ final class AppState: ObservableObject {
         PiSlashCommand(name: "compact", description: "Compact the current session context", source: "native", location: nil, path: nil),
         PiSlashCommand(name: "model", description: "Switch model: /model provider/model", source: "native", location: nil, path: nil),
         PiSlashCommand(name: "thinking", description: "Set reasoning level: /thinking high", source: "native", location: nil, path: nil),
-        PiSlashCommand(name: "name", description: "Rename this session: /name title", source: "native", location: nil, path: nil)
+        PiSlashCommand(name: "name", description: "Rename this session: /name title", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "login", description: "Configure provider authentication", source: "native", location: nil, path: nil),
+        PiSlashCommand(name: "logout", description: "Remove stored provider authentication", source: "native", location: nil, path: nil)
     ]
 
     func refreshSavedSessions() {
@@ -877,6 +928,7 @@ final class AppState: ObservableObject {
         activities = []
         uiRequest = nil
         availableCommands = Self.nativeCommands
+        availableThinkingLevels = ["off"]
         guard isPiRunning else {
             resetIdleConnectionState()
             return

@@ -4,7 +4,6 @@
 "Interface language" = "Interface language";
 
 /* Native Pi provider login */
-"Configure model provider" = "Configure model provider";
 "Providers and login methods are loaded from the installed Pi runtime, just like /login." = "Providers and login methods are loaded from the installed Pi runtime, just like /login.";
 "Search providers" = "Search providers";
 "Clear search" = "Clear search";
@@ -31,7 +30,6 @@
 "Done" = "Done";
 "Subscription / OAuth" = "Subscription / OAuth";
 "OAuth" = "OAuth";
-"Configured" = "Configured";
 "Starting Pi authentication…" = "Starting Pi authentication…";
 "Preparing authorization page…" = "Preparing authorization page…";
 "Waiting for Pi to request credentials…" = "Waiting for Pi to request credentials…";
@@ -49,5 +47,50 @@
 "Pi returned an invalid provider list" = "Pi returned an invalid provider list";
 "Model provider accounts" = "Model provider accounts";
 "Choose from the providers and login methods exposed by Pi /login." = "Choose from the providers and login methods exposed by Pi /login.";
-"Configure provider" = "Configure provider";
-"Provider authentication updated · Pi runtime reloading" = "Provider authentication updated · Pi runtime reloading";
+"Manage accounts" = "Manage accounts";
+"Log in to model provider" = "Log in to model provider";
+"Log out of model provider" = "Log out of model provider";
+"Only credentials stored by Pi are listed. External environment configuration is unchanged." = "Only credentials stored by Pi are listed. External environment configuration is unchanged.";
+"No stored provider credentials" = "No stored provider credentials";
+"Pi will remove this provider's stored credential" = "Pi will remove this provider's stored credential";
+"Log out" = "Log out";
+"Log out of provider?" = "Log out of provider?";
+"Pi will remove the stored credential. Environment variables and external configuration are unchanged." = "Pi will remove the stored credential. Environment variables and external configuration are unchanged.";
+"Logout is handled by Pi and removes only its stored credential." = "Logout is handled by Pi and removes only its stored credential.";
+"Removing stored provider credential…" = "Removing stored provider credential…";
+"Provider logged out" = "Provider logged out";
+"Refreshing provider model catalog…" = "Refreshing provider model catalog…";
+"Authentication succeeded; model catalog refresh will be retried by the Pi runtime." = "Authentication succeeded; model catalog refresh will be retried by the Pi runtime.";
+"Stored credential" = "Stored credential";
+"Configured externally" = "Configured externally";
+"Refresh models" = "Refresh models";
+"Refreshing model catalog…" = "Refreshing model catalog…";
+"Model catalog refreshed · Pi runtime reloading" = "Model catalog refreshed · Pi runtime reloading";
+
+/* Model management */
+"Model cycling" = "Model cycling";
+"Clear" = "Clear";
+"Advanced model patterns" = "Advanced model patterns";
+"One provider/model ID or Pi glob pattern per line." = "One provider/model ID or Pi glob pattern per line.";
+"Per-model thinking" = "Per-model thinking";
+"Choose model…" = "Choose model…";
+"No per-model overrides" = "No per-model overrides";
+"%lld per-model overrides" = "%lld per-model overrides";
+"%lld models or patterns" = "%lld models or patterns";
+"Advanced thinking budgets" = "Advanced thinking budgets";
+"Minimal budget" = "Minimal budget";
+"Low budget" = "Low budget";
+"Medium budget" = "Medium budget";
+"High budget" = "High budget";
+"Max" = "Max";
+
+/* Native slash commands */
+"Open Global and Project Pi settings" = "Open Global and Project Pi settings";
+"Start a new session" = "Start a new session";
+"Compact the current session context" = "Compact the current session context";
+"Switch model: /model provider/model" = "Switch model: /model provider/model";
+"Set reasoning level: /thinking high" = "Set reasoning level: /thinking high";
+"Rename this session: /name title" = "Rename this session: /name title";
+"Configure provider authentication" = "Configure provider authentication";
+"Remove stored provider authentication" = "Remove stored provider authentication";
+"No description" = "No description";

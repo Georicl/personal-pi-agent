@@ -49,4 +49,46 @@ struct SettingsFileTests {
     func rejectsInvalidIntegers(_ value: String) {
         #expect(!PiSettingsFile.isOptionalNonnegativeInteger(value))
     }
+
+    @Test("Per-model thinking overrides are written and can be cleared")
+    func writesStringDictionary() {
+        var document: [String: Any] = ["futureSetting": true]
+
+        PiSettingsFile.setStringDictionary(
+            ["openai-codex/gpt-5.6": "high"],
+            key: "modelThinkingLevels",
+            in: &document
+        )
+        #expect((document["modelThinkingLevels"] as? [String: String])?["openai-codex/gpt-5.6"] == "high")
+
+        PiSettingsFile.setStringDictionary([:], key: "modelThinkingLevels", in: &document)
+        #expect(document["modelThinkingLevels"] == nil)
+        #expect(document["futureSetting"] as? Bool == true)
+    }
+
+    @Test("Thinking levels follow Pi model capability metadata")
+    func derivesSupportedThinkingLevels() {
+        #expect(PiModelOption.thinkingLevels(reasoning: false, thinkingLevelMap: nil) == ["off"])
+        #expect(PiModelOption.thinkingLevels(reasoning: true, thinkingLevelMap: nil) == [
+            "off", "minimal", "low", "medium", "high"
+        ])
+        #expect(PiModelOption.thinkingLevels(
+            reasoning: true,
+            thinkingLevelMap: ["xhigh": NSNull(), "max": "max"]
+        ) == ["off", "minimal", "low", "medium", "high", "max"])
+    }
+
+    @Test("Full Pi model metadata is decoded for GUI model controls")
+    func decodesModelMetadata() throws {
+        let model = try #require(PiModelOption.decode([
+            "provider": "openai-codex",
+            "id": "gpt-5.6",
+            "name": "GPT-5.6",
+            "reasoning": true,
+            "thinkingLevelMap": ["xhigh": "xhigh", "max": "max"]
+        ]))
+
+        #expect(model.identity == "openai-codex/gpt-5.6")
+        #expect(model.supportedThinkingLevels.contains("max"))
+    }
 }

@@ -30,6 +30,7 @@ Rules:
 - The Swift GUI may display auth-store presence and provider readiness but never opens credential contents.
 - The Swift GUI does not invent login providers. It asks the installed Pi runtime for the same provider and authentication-method catalog used by `/login`.
 - Provider authentication is delegated to Pi's native model runtime. OAuth URLs are opened by the GUI when Pi emits them; API-key values exist only in the secure input long enough to answer Pi's local prompt and are not logged or retained by the GUI.
+- Logout delegates to `ModelRuntime.logout` and removes only Pi's stored credential. Environment variables and ambient provider configuration remain unchanged.
 - Provider readiness comes from `pi auth check --provider <id> --json --no-refresh`; the GUI never requests `--credentials`.
 - Global Chat always runs with `~/.pi/chat` as cwd.
 - Global knowledge is an external source; it is retrieved on demand rather than injected wholesale into every prompt.

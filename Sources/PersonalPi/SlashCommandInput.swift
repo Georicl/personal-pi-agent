@@ -49,6 +49,7 @@ struct SlashCommandInput: View {
                     .font(Theme.sans(13.5))
                     .lineLimit(1...maximumLines)
                     .onSubmit { submit() }
+                    .accessibilityIdentifier("composer-input")
 
                 Button {
                     submit()
@@ -186,10 +187,20 @@ private struct SlashCommandPalette: View {
                                         .foregroundStyle(index == selection ? Theme.accentInk : Theme.ink)
                                         .frame(width: 118, alignment: .leading)
                                         .lineLimit(1)
-                                    Text(command.description.isEmpty ? "No description" : command.description)
-                                        .font(Theme.sans(11))
-                                        .foregroundStyle(index == selection ? Theme.secondary : Theme.muted)
-                                        .lineLimit(1)
+                                    Group {
+                                        if command.source == "native" {
+                                            Text(LocalizedStringKey(
+                                                command.description.isEmpty
+                                                    ? "No description"
+                                                    : command.description
+                                            ))
+                                        } else {
+                                            Text(command.description.isEmpty ? "No description" : command.description)
+                                        }
+                                    }
+                                    .font(Theme.sans(11))
+                                    .foregroundStyle(index == selection ? Theme.secondary : Theme.muted)
+                                    .lineLimit(1)
                                     Spacer(minLength: 8)
                                     Text(command.sourceLabel)
                                         .font(Theme.mono(8.5))
