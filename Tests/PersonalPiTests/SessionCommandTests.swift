@@ -77,6 +77,22 @@ struct SessionCommandTests {
         #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("runtime/runner.py").path))
         #expect(arguments.containsSubsequence(["--extension", plugin.rootURL.path]))
     }
+
+    @Test("Pi launches the bundled Knowledge package from its plugin manifest")
+    func includesKnowledgePluginPackage() throws {
+        let plugin = try #require(PiLaunchConfiguration.knowledgePlugin)
+        let arguments = PiLaunchConfiguration.arguments(projectTrusted: true)
+
+        #expect(plugin.manifest.id == "knowledge")
+        #expect(plugin.manifest.command == "knowledge")
+        #expect(plugin.manifest.settingsNamespace == "knowledge")
+        #expect(plugin.manifest.artifacts.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("package.json").path))
+        #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("extensions/index.js").path))
+        #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("skills/knowledge/SKILL.md").path))
+        #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("runtime/knowledge_core.py").path))
+        #expect(arguments.containsSubsequence(["--extension", plugin.rootURL.path]))
+    }
 }
 
 private extension Array where Element: Equatable {

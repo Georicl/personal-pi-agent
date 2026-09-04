@@ -1,0 +1,21 @@
+{
+  "name": "@personal-pi/knowledge",
+  "version": "0.1.0",
+  "description": "Local knowledge capture, indexing, retrieval, and provenance tools for Personal Pi.",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "extensions"
+    ],
+    "skills": [
+      "skills"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}

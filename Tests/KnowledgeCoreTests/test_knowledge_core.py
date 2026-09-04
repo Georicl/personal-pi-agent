@@ -90,6 +90,27 @@ class KnowledgeCoreTests(unittest.TestCase):
         status = core.scope_status(self.global_scope)
         self.assertEqual(status["counts"], {"documents": 0, "chunks": 0, "errors": 0})
 
+    def test_inventory_reports_all_files_sizes_and_index_state(self) -> None:
+        core.initialize_scope(self.project_scope)
+        source = self.project_scope.knowledge_root / "sources" / "paper.txt"
+        attachment = self.project_scope.knowledge_root / "attachments" / "table.csv"
+        source.write_text("Indexed source material", encoding="utf-8")
+        attachment.write_text("x,y\n1,2\n", encoding="utf-8")
+        core.index_scope(self.project_scope)
+
+        inventory = core.inventory_scope(self.project_scope)
+
+        self.assertEqual(inventory["fileCount"], 2)
+        self.assertEqual(
+            inventory["totalBytes"], source.stat().st_size + attachment.stat().st_size
+        )
+        self.assertEqual(inventory["categories"]["sources"]["files"], 1)
+        self.assertEqual(inventory["categories"]["attachments"]["files"], 1)
+        files = {item["relativePath"]: item for item in inventory["files"]}
+        self.assertIsNotNone(files["sources/paper.txt"]["index"])
+        self.assertIsNone(files["attachments/table.csv"]["index"])
+        self.assertFalse(files["attachments/table.csv"]["supported"])
+
     def test_incremental_index_search_and_removed_source_detection(self) -> None:
         core.initialize_scope(self.global_scope)
         source = self.global_scope.knowledge_root / "sources" / "integration.md"
@@ -361,6 +382,64 @@ Stable identity survives a file move.
         self.assertEqual(result["indexed"], 1)
         document = core.get_document(self.global_scope, "stable-card")["document"]
         self.assertEqual(document["relativePath"], "cards/renamed.md")
+
+    def test_capture_and_confirmed_publish_preserve_card_identity(self) -> None:
+        captured = core.capture_record(
+            self.project_scope,
+            {
+                "category": "drafts",
+                "title": "Graph neighborhood principle",
+                "type": "concept",
+                "confidence": "medium",
+                "sources": [
+                    {"source_id": "source-paper-1", "locator": "Methods, page 4"}
+                ],
+                "tags": ["graph", "spatial"],
+                "content": "## Source facts\n\nRadius graphs encode local neighborhoods.",
+            },
+        )
+        document_id = captured["document"]["id"]
+        self.assertEqual(captured["document"]["status"], "draft")
+        self.assertTrue(Path(captured["path"]).is_file())
+        self.assertEqual(
+            core.search_scopes(
+                {
+                    "query": "local neighborhoods",
+                    "piRoot": str(self.pi_root),
+                    "scopes": [
+                        {"kind": "project", "projectRoot": str(self.project_root)}
+                    ],
+                }
+            )["results"],
+            [],
+        )
+
+        with self.assertRaisesRegex(core.KnowledgeCoreError, "explicit user confirmation"):
+            core.publish_card(
+                self.project_scope,
+                {"documentId": document_id, "userConfirmed": False},
+            )
+        published = core.publish_card(
+            self.project_scope,
+            {"documentId": document_id, "userConfirmed": True},
+        )
+
+        self.assertEqual(published["document"]["id"], document_id)
+        self.assertEqual(published["document"]["status"], "reviewed")
+        self.assertEqual(published["document"]["category"], "cards")
+        self.assertTrue(Path(published["path"]).is_file())
+        self.assertEqual(
+            core.search_scopes(
+                {
+                    "query": "local neighborhoods",
+                    "piRoot": str(self.pi_root),
+                    "scopes": [
+                        {"kind": "project", "projectRoot": str(self.project_root)}
+                    ],
+                }
+            )["results"][0]["document"]["id"],
+            document_id,
+        )
 
     def test_invalid_card_is_audited_but_not_searchable(self) -> None:
         core.initialize_scope(self.global_scope)

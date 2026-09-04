@@ -58,6 +58,8 @@ The Packages & Resources page uses the installed Pi SDK's `SettingsManager` and 
 
 The app loads the bundled Figure Pi Package on every Pi RPC launch with one `--extension <package-root>` argument. Pi resolves the package manifest and loads its Extension and optional `figure` Skill together. The Extension registers the explicit `/figure` command, so GUI activation does not depend on automatic Skill selection. Pi 0.84.3 preserves tool `details` on `tool_execution_end`, allowing the extension to send a typed `personalPiFigureArtifact` manifest without encoding file paths in assistant prose. Extension `ctx.ui.confirm` is used for the mandatory statistical-method confirmation. When `ctx.model.input` advertises image support, the tool may also return its PNG preview for the agent's visual revision loop. The package and GUI artifact contract are documented in `docs/figure-plugin.md`.
 
+The bundled Knowledge Pi Package follows the same package-root launch contract. It registers `/knowledge`, an optional `knowledge` workflow Skill, and tools for status, inventory, indexing, search, full-document reads, draft/source capture, and confirmed draft publication. Runtime work starts only when a command or tool is invoked. Human-readable files remain authoritative and SQLite remains derived; package behavior is documented in `docs/knowledge-plugin.md`.
+
 ## Verified RPC surface
 
 Personal Pi currently uses:

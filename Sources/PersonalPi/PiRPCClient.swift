@@ -821,6 +821,14 @@ enum PiLaunchConfiguration {
         figurePlugin?.rootURL
     }
 
+    static var knowledgePlugin: BundledPiPlugin? {
+        bundledPlugins.first { $0.id == "knowledge" }
+    }
+
+    static var knowledgePluginPackageURL: URL? {
+        knowledgePlugin?.rootURL
+    }
+
     static func resolvedExecutable() -> String? {
         guard !PersonalPiRuntimeEnvironment.externalProcessesDisabled else { return nil }
         return resolvedExecutable(named: "pi", overrideEnvironmentKey: "PERSONAL_PI_EXECUTABLE")
