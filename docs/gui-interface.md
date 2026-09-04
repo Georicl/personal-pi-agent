@@ -290,6 +290,8 @@ AccountUsageStore 聚合：
 | Global Chat files | ~/.pi/chat/ | Personal Pi 工作目录 |
 | Global Knowledge | ~/.pi/knowledge/ | Personal Pi |
 | Project Knowledge | project/.pi/knowledge/ | Project |
+| Global knowledge index | ~/.pi/personal/knowledge/global.sqlite | Knowledge Core, derived |
+| Project knowledge index | ~/.pi/personal/knowledge/projects/&lt;project-hash&gt;/index.sqlite | Knowledge Core, derived |
 | Task records | ~/.pi/agent/personal-pi-tasks.json | Personal Pi |
 | Figure artifact index | ~/.pi/agent/personal-pi-figure-artifacts.json | Personal Pi |
 | Project figures | project/.pi/artifacts/figures/ | Figure Extension |
@@ -334,6 +336,7 @@ UI 测试支持：
 3. XCUITest：验证导航、本地化和主要交互入口。
 4. Shell compatibility：验证真实安装版 Pi、RPC、Packages 和 Starter Pack。
    Figure 插件还必须运行 `scripts/check-figure-plugin.sh`，检查标准 Pi Package、显式 `/figure` 命令、真实三格式产物和默认清理策略。
+   Knowledge Core 必须运行 `scripts/check-knowledge-core.sh`，检查作用域、结构化卡片、增量索引、PDF 定位、中英文检索和 JSON 协议。
 5. Manual GUI smoke：检查 Finder 启动、真实作用域切换、会话恢复和视觉布局。
 
 ## 12. 新功能接入模板

@@ -12,8 +12,10 @@ Use [assets/knowledge-entry.md](assets/knowledge-entry.md) as the entry structur
 
 ## 1. Choose the scope
 
-- **Global:** reusable across projects; write below `~/.pi/knowledge/entries/`.
-- **Project:** specific to the active project; write below `<project>/.pi/knowledge/entries/`.
+- **Global:** reusable across projects; write new proposals below `~/.pi/knowledge/drafts/`.
+- **Project:** specific to the active project; write new proposals below `<project>/.pi/knowledge/drafts/`.
+
+Write directly to `cards/` only when the user explicitly approves the final knowledge card. Existing legacy `entries/` files remain readable, but new entries must use `drafts/` or `cards/`.
 
 If the scope materially changes where knowledge will be used and is not clear, ask the user.
 
@@ -50,6 +52,7 @@ Use ISO 8601 timestamps. Prefer a stable descriptive slug for the filename.
 ## 5. Write safely
 
 - Create only the required knowledge directories.
+- Fill the template's `id`, `title`, `type`, `status`, and `sources` fields before writing.
 - Preserve unrelated entries.
 - If updating an entry, retain earlier sources and user judgments unless explicitly superseded.
 - Link related entries rather than copying large sections.
