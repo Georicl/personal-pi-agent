@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct RootView: View {
@@ -461,60 +462,98 @@ struct ConnectionCard: View {
 
 struct DetailView: View {
     @EnvironmentObject private var appState: AppState
+    @AppStorage(
+        "personalPi.figureArtifactSidebarWidth",
+        store: PersonalPiPreferences.store
+    ) private var artifactSidebarWidth = 440.0
+    @State private var sidebarDragStartWidth: CGFloat?
+
+    private let minimumArtifactSidebarWidth: CGFloat = 280
+    private let maximumArtifactSidebarWidth: CGFloat = 760
+    private let minimumPrimaryContentWidth: CGFloat = 360
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                TopBar()
-                switch appState.selectedSection {
-                case .overview:
-                    ScrollView(showsIndicators: false) {
-                        OverviewView()
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    TopBar()
+                    switch appState.selectedSection {
+                    case .overview:
+                        ScrollView(showsIndicators: false) {
+                            OverviewView()
+                        }
+                    case .sessions:
+                        SessionsView()
+                    case .knowledge:
+                        ScrollView(showsIndicators: false) {
+                            KnowledgeView()
+                        }
+                    case .packages:
+                        ScrollView(showsIndicators: false) {
+                            PackagesView()
+                        }
+                    case .projects:
+                        ScrollView(showsIndicators: false) {
+                            ProjectsView()
+                        }
+                    case .tasks:
+                        ScrollView(showsIndicators: false) {
+                            TasksView()
+                        }
+                    case .diagnostics:
+                        ScrollView(showsIndicators: false) {
+                            RuntimeDiagnosticsView()
+                        }
+                    case .settings:
+                        ScrollView(showsIndicators: false) {
+                            SettingsView()
+                        }
+                        .accessibilityIdentifier("settings-scroll-view")
                     }
-                case .sessions:
-                    SessionsView()
-                case .knowledge:
-                    ScrollView(showsIndicators: false) {
-                        KnowledgeView()
-                    }
-                case .packages:
-                    ScrollView(showsIndicators: false) {
-                        PackagesView()
-                    }
-                case .projects:
-                    ScrollView(showsIndicators: false) {
-                        ProjectsView()
-                    }
-                case .tasks:
-                    ScrollView(showsIndicators: false) {
-                        TasksView()
-                    }
-                case .diagnostics:
-                    ScrollView(showsIndicators: false) {
-                        RuntimeDiagnosticsView()
-                    }
-                case .settings:
-                    ScrollView(showsIndicators: false) {
-                        SettingsView()
-                    }
-                    .accessibilityIdentifier("settings-scroll-view")
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if appState.isArtifactSidebarVisible {
-                Hairline(axis: .vertical)
-                ArtifactSidebarView(
-                    isVisible: $appState.isArtifactSidebarVisible,
-                    store: appState.figureArtifactStore
-                )
-                    .frame(width: 340)
+                if appState.isArtifactSidebarVisible {
+                    ArtifactSidebarResizeHandle(
+                        onChanged: { translation in
+                            let currentWidth = resolvedArtifactSidebarWidth(in: geometry.size.width)
+                            if sidebarDragStartWidth == nil {
+                                sidebarDragStartWidth = currentWidth
+                            }
+                            let proposedWidth = (sidebarDragStartWidth ?? currentWidth) - translation
+                            artifactSidebarWidth = Double(clampedArtifactSidebarWidth(
+                                proposedWidth,
+                                in: geometry.size.width
+                            ))
+                        },
+                        onEnded: {
+                            sidebarDragStartWidth = nil
+                        }
+                    )
+                    ArtifactSidebarView(
+                        isVisible: $appState.isArtifactSidebarVisible,
+                        store: appState.figureArtifactStore
+                    )
+                    .frame(width: resolvedArtifactSidebarWidth(in: geometry.size.width))
                     .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvas)
         .animation(.easeInOut(duration: 0.18), value: appState.isArtifactSidebarVisible)
+    }
+
+    private func resolvedArtifactSidebarWidth(in availableWidth: CGFloat) -> CGFloat {
+        clampedArtifactSidebarWidth(CGFloat(artifactSidebarWidth), in: availableWidth)
+    }
+
+    private func clampedArtifactSidebarWidth(_ width: CGFloat, in availableWidth: CGFloat) -> CGFloat {
+        let dynamicMaximum = max(
+            minimumArtifactSidebarWidth,
+            min(maximumArtifactSidebarWidth, availableWidth - minimumPrimaryContentWidth)
+        )
+        return min(max(width, minimumArtifactSidebarWidth), dynamicMaximum)
     }
 }
 
@@ -531,22 +570,6 @@ struct TopBar: View {
             AgentStatusPill()
 
             Spacer(minLength: 0)
-
-            if appState.figurePluginAvailable {
-                Button {
-                    appState.beginFigureRequest()
-                } label: {
-                    Label("Figure", systemImage: "chart.xyaxis.line")
-                        .font(Theme.mono(10.5, weight: .medium))
-                        .foregroundStyle(Theme.accentInk)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(Theme.accentFill, in: RoundedRectangle(cornerRadius: 5))
-                }
-                .buttonStyle(.plain)
-                .help("Start a figure request")
-                .accessibilityIdentifier("figure-plugin-button")
-            }
 
             FigureArtifactToggle(
                 isVisible: $appState.isArtifactSidebarVisible,
@@ -572,6 +595,44 @@ struct TopBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .overlay(alignment: .bottom) { Hairline(color: Theme.rule) }
+    }
+}
+
+private struct ArtifactSidebarResizeHandle: View {
+    let onChanged: (CGFloat) -> Void
+    let onEnded: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 8)
+            .overlay {
+                Rectangle()
+                    .fill(isHovering ? Theme.accentSoft : Theme.rule)
+                    .frame(width: isHovering ? 2 : 1)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        onChanged(value.translation.width)
+                    }
+                    .onEnded { _ in
+                        onEnded()
+                    }
+            )
+            .onHover { hovering in
+                isHovering = hovering
+                (hovering ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
+            }
+            .onDisappear {
+                NSCursor.arrow.set()
+            }
+            .help("Drag to resize figure preview")
+            .accessibilityElement()
+            .accessibilityLabel("Resize figure preview")
+            .accessibilityIdentifier("figure-artifact-sidebar-resize-handle")
     }
 }
 

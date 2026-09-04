@@ -50,7 +50,7 @@ scripts/build-app.sh release
 4. 在 Settings 中选择默认模型和思考等级。
 5. 回到 Overview 或 Sessions，输入消息开始会话。
 
-需要绘图时，点击右上角 **绘图**，补充图片目的与数据路径后发送；也可以直接输入 `/figure <要求>`。Extension 会确定性启动绘图流程，不依赖 Skill 自动识别。Pi 会检查数据、生成并最多自动修订 5 版；新图片会自动出现在全局右侧预览栏。
+需要绘图时，直接用自然语言描述图片目的与数据路径，或输入 `/figure <要求>`。Extension 会确定性启动绘图流程，不依赖 Skill 自动识别。Pi 会检查数据、生成并最多自动修订 5 版；新图片会自动出现在全局右侧预览栏。
 
 Global Chat 的工作目录为 `~/.pi/chat`。Project 模式以所选项目根目录作为 Pi 的 `cwd`，并自动加载该项目允许的 `.pi` 配置与资源。
 
@@ -67,7 +67,7 @@ Global Chat 的工作目录为 `~/.pi/chat`。Project 模式以所选项目根�
 | Diagnostics | 环境诊断 | 检查 Pi、Node、Codex、全局目录、项目配置和资源加载条件 |
 | Settings | Pi 原生配置 | Global、Project、Effective 三种视图；模型、思考、压缩、重试、消息投递、图像、工具和高级运行环境设置 |
 
-TopBar 右上角的图片按钮可在任意页面打开 Artifact Sidebar。当前第一类产物为图片：支持版本预览、验证结果，以及按尺寸导出 PNG、TIFF 或矢量 PDF。
+TopBar 右上角的预览按钮可在任意页面打开 Artifact Sidebar；侧栏左缘可以拖动并记住宽度。当前第一类产物为图片：支持版本预览、验证结果，以及按尺寸导出 PNG、TIFF 或矢量 PDF。会话工具栏中的“智能体活动”按钮用于随时显示或隐藏工具执行记录。
 
 ## Project 与 Global Chat
 

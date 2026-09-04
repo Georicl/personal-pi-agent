@@ -64,30 +64,61 @@ final class PersonalPiUITests: XCTestCase {
         let app = launchApp(language: "zh-Hans")
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["figure-plugin-button"].exists)
         let toggle = app.buttons["figure-artifact-sidebar-toggle"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 4))
-        toggle.click()
-        XCTAssertTrue(app.descendants(matching: .any)["figure-artifact-sidebar"].waitForExistence(timeout: 4))
+        app.activate()
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let sidebar = app.descendants(matching: .any)["figure-artifact-sidebar"].firstMatch
+        XCTAssertTrue(sidebar.waitForExistence(timeout: 4))
         XCTAssertTrue(app.descendants(matching: .any)["figure-artifact-image"].exists)
         XCTAssertTrue(app.buttons["export-figure-button"].exists)
+
+        let resizeHandle = app.descendants(matching: .any)["figure-artifact-sidebar-resize-handle"].firstMatch
+        XCTAssertTrue(resizeHandle.waitForExistence(timeout: 4))
+        let originalWidth = sidebar.frame.width
+        let canGrow = originalWidth + 100 < app.windows.firstMatch.frame.width - 238 - 360
+        let dragDistance: CGFloat = canGrow ? -100 : 100
+        let dragStart = resizeHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        app.activate()
+        dragStart.press(
+            forDuration: 0.1,
+            thenDragTo: dragStart.withOffset(CGVector(dx: dragDistance, dy: 0))
+        )
+        let resizedWidth = sidebar.frame.width
+        XCTAssertGreaterThan(abs(resizedWidth - originalWidth), 60)
+
+        let restoreStart = resizeHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        restoreStart.press(
+            forDuration: 0.1,
+            thenDragTo: restoreStart.withOffset(CGVector(dx: -dragDistance, dy: 0))
+        )
 
         app.buttons["知识库"].click()
         XCTAssertTrue(app.descendants(matching: .any)["figure-artifact-sidebar"].exists)
     }
 
     @MainActor
-    func testFigurePluginButtonPreparesExplicitCommand() {
+    func testAgentActivityButtonTogglesDrawer() {
         let app = launchApp(language: "zh-Hans")
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
-        let figureButton = app.buttons["figure-plugin-button"]
-        XCTAssertTrue(figureButton.waitForExistence(timeout: 4))
-        XCTAssertEqual(figureButton.label, "绘图")
-        figureButton.click()
+        app.buttons["会话"].click()
+        app.activate()
 
-        let composer = app.textFields["composer-input"]
-        XCTAssertTrue(composer.waitForExistence(timeout: 4))
-        XCTAssertEqual(composer.value as? String, "/figure ")
+        let activityButton = app.buttons["agent-activity-toggle"]
+        let activityPanel = app.descendants(matching: .any)["agent-activity-panel"].firstMatch
+        XCTAssertTrue(activityButton.waitForExistence(timeout: 4))
+        XCTAssertEqual(activityButton.label, "智能体活动")
+        let wasVisible = activityPanel.exists
+
+        app.activate()
+        activityButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        waitForExistence(!wasVisible, of: activityPanel)
+
+        app.activate()
+        activityButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        waitForExistence(wasVisible, of: activityPanel)
     }
 
     @MainActor
@@ -272,6 +303,14 @@ final class PersonalPiUITests: XCTestCase {
     }
 
     private var appLanguageStorageKey: String { "personalPi.appLanguage" }
+
+    private func waitForExistence(_ expected: Bool, of element: XCUIElement) {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == %@", NSNumber(value: expected)),
+            object: element
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 4), .completed)
+    }
 
     @MainActor
     private func assertSlashCommand(

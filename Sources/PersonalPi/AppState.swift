@@ -220,7 +220,6 @@ final class AppState: ObservableObject {
     @Published var currentProject = ""
     @Published var currentProjectPath = ""
     @Published var composerText = ""
-    @Published private(set) var composerFocusRequest = 0
     @Published var isPiRunning = false
     @Published private(set) var messages: [PiChatMessage] = []
     @Published private(set) var activities: [PiActivity] = []
@@ -394,21 +393,6 @@ final class AppState: ObservableObject {
             connectPi()
         } else {
             send(text: text)
-        }
-    }
-
-    var figurePluginAvailable: Bool {
-        PiLaunchConfiguration.figurePlugin?.manifest.gui.toolbarButton == true
-    }
-
-    func beginFigureRequest() {
-        guard let command = PiLaunchConfiguration.figurePlugin?.manifest.command,
-              !command.isEmpty else { return }
-        selectedSection = .overview
-        composerText = "/\(command) "
-        Task { @MainActor in
-            await Task.yield()
-            composerFocusRequest += 1
         }
     }
 

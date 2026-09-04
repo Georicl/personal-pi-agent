@@ -172,7 +172,7 @@ GUI 原生命令定义在 AppState.nativeCommands，执行分派位于 executeNa
 - 标准 `package.json`，由 Pi 决定加载哪些 Extensions、Skills、Prompts 和 Themes；
 - `personal-pi-plugin.json`，由 GUI 声明插件 ID、显示名、显式命令、设置命名空间和 artifact renderer。
 
-`PiLaunchConfiguration.arguments` 对每个有效插件只传入一次 `--extension <package-root>`，不再分别拼接 Extension 与 Skill 路径。Pi 根据 Package manifest 加载内部资源。GUI 按插件清单显示入口；例如 Figure 插件按钮调用 `AppState.beginFigureRequest()`，预填 `/figure ` 并聚焦输入框。
+`PiLaunchConfiguration.arguments` 对每个有效插件只传入一次 `--extension <package-root>`，不再分别拼接 Extension 与 Skill 路径。Pi 根据 Package manifest 加载内部资源。Figure 不占用独立的 TopBar 启动按钮；用户通过自然语言或 `/figure` 启动，GUI manifest 只声明 Artifact Sidebar 集成。
 
 插件清单只描述 GUI 可复用的声明式入口，不允许外部包动态注入 Swift 代码。新的 artifact renderer 必须先在 GUI 中实现并以稳定 `kind` 注册。
 
@@ -363,3 +363,5 @@ DetailView
 ~~~
 
 Figure 插件通过 `FigureArtifactStore` 实现第一种 schema。后续 PDF、报告等类型应扩展为显式 artifact kind/schema，并复用全局容器；不要从聊天文本中猜测文件路径，也不要让每个页面自行维护一套右侧栏状态。任何新 schema 至少应包含稳定 ID、源文件、预览文件、MIME/UTType、支持导出格式、物理尺寸或页面信息、生成时间、所属 Project/Session 和验证结果。
+
+Artifact Sidebar 的宽度由 `personalPi.figureArtifactSidebarWidth` 保存，左侧拖动柄将宽度限制在 280–760 pt，并为主内容至少保留 360 pt。Session 页的 `personalPi.showActivityDrawer` 由工具栏中始终可见的“智能体活动”按钮切换，活动面板默认隐藏。

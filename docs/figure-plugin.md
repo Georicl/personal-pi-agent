@@ -20,7 +20,7 @@ pandas Pickle 属于可执行序列化，只应读取用户确认可信的本地
 ## 2. 一次请求内的流程
 
 ~~~text
-GUI“绘图”按钮或 /figure <要求>
+自然语言绘图请求或 /figure <要求>
         │
         ▼
 Figure Extension command
@@ -96,7 +96,7 @@ fig, ax = plt.subplots(figsize=(width_mm / 25.4, height_mm / 25.4))
 --extension <PiPackages>/Figure
 ~~~
 
-Pi 会按照 `package.json` 同时加载 Extension 和 `figure` Skill。用户首选 GUI 的“绘图”按钮或 `/figure <要求>`；也可以自然语言提出绘图要求或显式调用 `/skill:figure`。
+Pi 会按照 `package.json` 同时加载 Extension 和 `figure` Skill。用户可以自然语言提出绘图要求、使用 `/figure <要求>`，或显式调用 `/skill:figure`。
 
 ## 6. Extension tools
 
@@ -167,7 +167,8 @@ Global Chat 使用 `~/.pi/chat/.pi/artifacts/figures/`。GUI 为了跨页面和�
 
 ## 9. GUI 交互
 
-- TopBar 右上角的图片按钮在所有页面可见。
+- TopBar 右上角只保留图片预览按钮，不提供额外的绘图跳转按钮。
+- 图片侧栏左缘可以拖动调整宽度，并在下次启动时恢复。
 - 每次 render 返回新 manifest 后侧栏自动展开并显示当前版本。
 - 版本选择器展示同一 `figureId` 的历史版本。
 - 验证卡展示 passed/needs revision、分数、错误与警告。
