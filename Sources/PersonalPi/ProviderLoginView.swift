@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ProviderLoginView: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.system.rawValue
     @StateObject private var viewModel: ProviderLoginViewModel
     @State private var searchText = ""
     @State private var showingLogoutConfirmation = false
@@ -22,6 +23,10 @@ struct ProviderLoginView: View {
         ))
     }
 
+    private var interfaceLocale: Locale {
+        (AppLanguage(rawValue: languageRawValue) ?? .system).locale
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -32,6 +37,7 @@ struct ProviderLoginView: View {
         }
         .frame(width: 720, height: 680)
         .background(Theme.canvas)
+        .environment(\.locale, interfaceLocale)
         .task { viewModel.loadProviders() }
         .onDisappear { viewModel.cancelActiveLogin() }
         .alert("Log out of provider?", isPresented: $showingLogoutConfirmation) {

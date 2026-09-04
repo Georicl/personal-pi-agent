@@ -211,6 +211,7 @@ private struct SlashCommandPalette: View {
                                 .background(index == selection ? Theme.accentFill : Color.clear)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("slash-command-\(command.name)")
                             .id(command.id)
                         }
                     }

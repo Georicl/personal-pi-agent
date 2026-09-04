@@ -102,7 +102,9 @@ final class PersonalPiUITests: XCTestCase {
         let configureProvider = app.buttons["configure-model-provider-button"]
         XCTAssertTrue(configureProvider.waitForExistence(timeout: 4))
         if !configureProvider.isHittable {
-            app.scrollViews.firstMatch.swipeUp()
+            let settingsScrollView = app.scrollViews["settings-scroll-view"]
+            XCTAssertTrue(settingsScrollView.exists)
+            settingsScrollView.scroll(byDeltaX: 0, deltaY: -120)
         }
         XCTAssertTrue(configureProvider.isHittable)
         configureProvider.click()
@@ -146,12 +148,11 @@ final class PersonalPiUITests: XCTestCase {
         let composer = app.textFields["composer-input"]
         XCTAssertTrue(composer.waitForExistence(timeout: 4))
         composer.click()
-        composer.typeText("/")
 
-        XCTAssertTrue(app.staticTexts["/tree"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.staticTexts["/fork"].exists)
-        XCTAssertTrue(app.staticTexts["/clone"].exists)
-        XCTAssertTrue(app.staticTexts["/export"].exists)
+        assertSlashCommand("/tree", using: "/tr", in: composer, app: app)
+        assertSlashCommand("/fork", using: "/fo", in: composer, app: app)
+        assertSlashCommand("/clone", using: "/cl", in: composer, app: app)
+        assertSlashCommand("/export", using: "/ex", in: composer, app: app)
     }
 
     @MainActor
@@ -256,4 +257,18 @@ final class PersonalPiUITests: XCTestCase {
     }
 
     private var appLanguageStorageKey: String { "personalPi.appLanguage" }
+
+    @MainActor
+    private func assertSlashCommand(
+        _ command: String,
+        using query: String,
+        in composer: XCUIElement,
+        app: XCUIApplication
+    ) {
+        composer.typeKey("a", modifierFlags: .command)
+        composer.typeText(query)
+        let commandButton = app.buttons["slash-command-\(command.dropFirst())"]
+        XCTAssertTrue(commandButton.waitForExistence(timeout: 4))
+        XCTAssertTrue(commandButton.label.contains(command))
+    }
 }

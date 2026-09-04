@@ -497,6 +497,7 @@ struct DetailView: View {
                     ScrollView(showsIndicators: false) {
                         SettingsView()
                     }
+                    .accessibilityIdentifier("settings-scroll-view")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
