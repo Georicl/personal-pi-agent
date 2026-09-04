@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "knowledge",
+  "displayName": "Knowledge",
+  "command": "knowledge",
+  "artifacts": [],
+  "settingsNamespace": "knowledge",
+  "gui": {
+    "toolbarButton": false,
+    "artifactSidebar": false
+  }
+}

@@ -60,7 +60,7 @@ Global Chat 的工作目录为 `~/.pi/chat`。Project 模式以所选项目根�
 |---|---|---|
 | Overview | 当前作用域入口 | 新会话、发送消息、账户状态、当前会话用量、最近会话 |
 | Sessions | 会话总览与对话 | 恢复、切换、筛选、停止、压缩、会话信息、树导航、Fork、Clone、HTML 导出、复制回复、资源重载 |
-| Knowledge | 知识目录入口 | 查看 Global/Project 知识目录；Knowledge Core 已具备本地索引与搜索契约，Pi/GUI 接入将在后续 PR 完成 |
+| Knowledge | 知识目录入口 | 查看 Global/Project 知识目录；Pi 已可索引、检索、读取、捕获和发布知识，详细 GUI 总览将在后续 PR 完成 |
 | Packages | Pi 包与资源管理 | Global/Project 安装、移除、更新 Packages；启用或禁用 Extensions、Skills、Prompt Templates、Themes |
 | Projects | 项目总览 | 创建或添加项目、查看 Git 分支、修改数量、会话数量并快速切换 |
 | Tasks | 任务状态 | 按 Submitted、Running、Waiting、Finished 展示；同一 Pi Session 持续更新同一任务 |
@@ -145,12 +145,13 @@ Project 资源支持 Inherit、Enabled、Disabled 三态，不建立第二套独
 
 ## Knowledge Core
 
-Knowledge Core 已提供 GUI 无关的第一阶段基础能力：Global/Project 标准目录、Markdown/TXT/PDF 解析、SQLite FTS5、结构化知识卡校验、增量索引、删除检测、重建、跨作用域搜索和可定位结果。Markdown/PDF 等人类可读文件是事实来源，`~/.pi/personal/knowledge/` 下的 SQLite 仅为可重建索引。
+Knowledge Core 提供 GUI 无关的基础能力：Global/Project 标准目录、Markdown/TXT/PDF 解析、SQLite FTS5、结构化知识卡校验、增量索引、删除检测、重建、跨作用域搜索和可定位结果。Markdown/PDF 等人类可读文件是事实来源，`~/.pi/personal/knowledge/` 下的 SQLite 仅为可重建索引。
 
-当前 Knowledge 页面尚未调用该核心，Pi 也尚未注册知识工具；这两部分分别属于后续 PR B 和 PR C。接口、路径和卡片格式见 [Knowledge Core](docs/knowledge-core.md)。
+内置 Knowledge Pi Package 已注册 `/knowledge`、检索与维护工具，并提供只在明确请求时运行的捕获/发布流程；不会把整个知识库注入每轮上下文。接口、路径和卡片格式见 [Knowledge Core](docs/knowledge-core.md)，Agent 工作流见 [Knowledge Plugin](docs/knowledge-plugin.md)。
 
 ~~~bash
 scripts/check-knowledge-core.sh
+scripts/check-knowledge-plugin.sh
 ~~~
 
 ## 数据与隐私边界

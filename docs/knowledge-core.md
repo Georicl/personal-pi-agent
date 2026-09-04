@@ -1,6 +1,6 @@
 # Knowledge Core
 
-Knowledge Core is the storage, parsing, indexing, and retrieval foundation for Personal Pi knowledge. PR A deliberately does not register a Pi Extension and does not replace the current Knowledge GUI: the runtime is bundled below `Resources/PiPackages/Knowledge/runtime/` so PR B can expose the same core to Pi CLI and PR C can present it in SwiftUI without creating a second database implementation.
+Knowledge Core is the storage, parsing, indexing, and retrieval foundation for Personal Pi knowledge. The runtime is bundled below `Resources/PiPackages/Knowledge/runtime/`; the Knowledge Pi Package exposes it to Pi CLI, and the Swift GUI consumes the same protocol instead of creating a second database implementation.
 
 ## 1. Source-of-truth boundary
 
@@ -105,10 +105,13 @@ SQLite runs with foreign keys and WAL enabled. FTS entries are synchronized by i
 |---|---|---|
 | `initialize` | `scope` | Create canonical directories and schema |
 | `status` | `scope` | Report document/chunk/error counts and latest run |
+| `inventory` | `scope` | List files, category/byte totals, format support, and index state |
 | `index` | `scope` | Incrementally add, update, retain, and remove records |
 | `rebuild` | `scope` | Replace only the derived index, then rescan files |
 | `search` | `scopes`, `query` | Search one or more indexes and return located chunks |
 | `get` | `scope`, `documentId` | Return one document and all chunks |
+| `capture` | `scope`, `category`, `title`, `content` | Create an inbox item, source, or draft card and index it |
+| `publish` | `scope`, `documentId`, `userConfirmed` | Move a confirmed draft into reviewed cards and reindex |
 
 Global initialization example:
 
@@ -151,21 +154,20 @@ Deleting or rebuilding an index never removes knowledge files. The runner ignore
 
 ## 8. Current boundary
 
-PR A does not yet provide:
+The current core and Pi Package do not yet provide:
 
-- Pi Extension tools or `/knowledge` commands;
-- automatic knowledge capture or card publishing;
 - redesigned Knowledge GUI;
 - embeddings or model reranking;
 - OCR, DOCX, HTML, or web ingestion;
 - literature database adapters.
 
-These are intentionally deferred: PR B will wrap this runner in a Pi Package Extension and PR C will consume the same contracts from the GUI.
+The deterministic local index remains useful without those layers. See [Knowledge Plugin](knowledge-plugin.md) for the Pi tools and command contract.
 
 ## 9. Validation
 
 ~~~bash
 scripts/check-knowledge-core.sh
+scripts/check-knowledge-plugin.sh
 ~~~
 
 The check validates the lock file and runs isolated tests for canonical paths, directory/schema creation, English and Chinese search, Global/Project merging, reviewed cards and draft exclusion, legacy-entry compatibility, invalid-card auditing, file size bounds, PDF page locators, incremental updates/removals and stable-ID file moves, rebuild, and the stdin/stdout JSON protocol.

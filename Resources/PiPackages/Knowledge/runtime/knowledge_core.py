@@ -20,6 +20,7 @@ SCHEMA_VERSION = 1
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".pdf"}
 KNOWLEDGE_DIRECTORIES = ("inbox", "sources", "cards", "drafts", "attachments")
 INDEXED_CATEGORIES = ("inbox", "sources", "cards", "drafts", "entries")
+INVENTORY_CATEGORIES = (*KNOWLEDGE_DIRECTORIES, "entries")
 MAX_FILE_BYTES = 50 * 1024 * 1024
 MAX_EXTRACTED_CHARACTERS = 5_000_000
 MAX_CHUNK_CHARACTERS = 4_000
@@ -445,7 +446,7 @@ def discover_files(scope: KnowledgeScope) -> list[tuple[str, Path]]:
     discovered: list[tuple[str, Path]] = []
     for category in INDEXED_CATEGORIES:
         category_root = scope.knowledge_root / category
-        if not category_root.exists():
+        if not category_root.exists() or category_root.is_symlink():
             continue
         for path in category_root.rglob("*"):
             if path.is_symlink() or not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES:
@@ -455,6 +456,105 @@ def discover_files(scope: KnowledgeScope) -> list[tuple[str, Path]]:
                 continue
             discovered.append((category, path))
     return sorted(discovered, key=lambda item: item[1].as_posix().lower())
+
+
+def discover_inventory_files(scope: KnowledgeScope) -> list[tuple[str, Path]]:
+    discovered: list[tuple[str, Path]] = []
+    for category in INVENTORY_CATEGORIES:
+        category_root = scope.knowledge_root / category
+        if not category_root.exists() or category_root.is_symlink():
+            continue
+        for path in category_root.rglob("*"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            relative_parts = path.relative_to(category_root).parts
+            if any(part.startswith(".") for part in relative_parts):
+                continue
+            discovered.append((category, path))
+    return sorted(discovered, key=lambda item: item[1].as_posix().lower())
+
+
+def inventory_scope(scope: KnowledgeScope, limit: int = 500) -> dict[str, Any]:
+    if not 1 <= limit <= 5_000:
+        raise KnowledgeCoreError("inventory limit must be between 1 and 5000")
+    connection = connect_scope(scope, create=False)
+    initialized = connection is not None
+    indexed: dict[str, sqlite3.Row] = {}
+    latest_run: dict[str, Any] | None = None
+    if connection is not None:
+        try:
+            rows = connection.execute(
+                """
+                SELECT d.id, d.relative_path, d.title, d.status, d.error,
+                       COUNT(c.id) AS chunk_count
+                FROM documents d
+                LEFT JOIN chunks c ON c.document_id = d.id
+                WHERE d.scope_id = ?
+                GROUP BY d.id
+                """,
+                (scope.scope_id,),
+            ).fetchall()
+            indexed = {row["relative_path"]: row for row in rows}
+            latest = connection.execute(
+                """
+                SELECT id, action, finished_at FROM indexing_runs
+                WHERE scope_id = ? ORDER BY finished_at DESC LIMIT 1
+                """,
+                (scope.scope_id,),
+            ).fetchone()
+            latest_run = dict(latest) if latest else None
+        finally:
+            connection.close()
+
+    category_totals = {
+        category: {"files": 0, "bytes": 0} for category in INVENTORY_CATEGORIES
+    }
+    items: list[dict[str, Any]] = []
+    total_bytes = 0
+    discovered = discover_inventory_files(scope)
+    for category, path in discovered:
+        stat = path.stat()
+        relative_path = path.relative_to(scope.knowledge_root).as_posix()
+        total_bytes += stat.st_size
+        category_totals[category]["files"] += 1
+        category_totals[category]["bytes"] += stat.st_size
+        if len(items) >= limit:
+            continue
+        record = indexed.get(relative_path)
+        items.append(
+            {
+                "relativePath": relative_path,
+                "category": category,
+                "name": path.name,
+                "extension": path.suffix.lower(),
+                "sizeBytes": stat.st_size,
+                "modifiedAt": datetime.fromtimestamp(
+                    stat.st_mtime, timezone.utc
+                ).isoformat().replace("+00:00", "Z"),
+                "supported": path.suffix.lower() in SUPPORTED_SUFFIXES,
+                "index": (
+                    {
+                        "documentId": record["id"],
+                        "title": record["title"],
+                        "status": record["status"],
+                        "chunks": record["chunk_count"],
+                        "error": record["error"],
+                    }
+                    if record
+                    else None
+                ),
+            }
+        )
+    return {
+        "scope": scope.as_dict(),
+        "initialized": initialized,
+        "fileCount": len(discovered),
+        "totalBytes": total_bytes,
+        "categories": category_totals,
+        "files": items,
+        "truncated": len(discovered) > limit,
+        "latestRun": latest_run,
+    }
 
 
 def insert_document(
@@ -925,6 +1025,131 @@ def get_document(scope: KnowledgeScope, document_id: str) -> dict[str, Any]:
         connection.close()
 
 
+def markdown_record(metadata: dict[str, Any], content: str) -> str:
+    frontmatter = yaml.safe_dump(
+        json_safe(metadata),
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+    ).strip()
+    return f"---\n{frontmatter}\n---\n\n{content.strip()}\n"
+
+
+def filename_slug(title: str) -> str:
+    normalized = re.sub(r"[^\w-]+", "-", title.strip().lower(), flags=re.UNICODE)
+    normalized = re.sub(r"-{2,}", "-", normalized).strip("-_")
+    return (normalized or "knowledge")[:80].rstrip("-_")
+
+
+def capture_record(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, Any]:
+    category = str(request.get("category") or "drafts").strip().lower()
+    if category not in {"inbox", "sources", "drafts"}:
+        raise KnowledgeCoreError("capture category must be inbox, sources, or drafts")
+    title = str(request.get("title") or "").strip()
+    content = request.get("content")
+    if not title:
+        raise KnowledgeCoreError("capture title is required")
+    if not isinstance(content, str) or not content.strip():
+        raise KnowledgeCoreError("capture content is required")
+    tags = normalize_tags(request.get("tags"))
+    sources = request.get("sources") or []
+    if not isinstance(sources, list):
+        raise KnowledgeCoreError("capture sources must be a list")
+    now = utc_now()
+    record_id = (
+        f"card-{uuid.uuid4().hex}"
+        if category == "drafts"
+        else f"source-{uuid.uuid4().hex}"
+    )
+    metadata: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "id": record_id,
+        "title": title,
+        "status": "draft" if category == "drafts" else ("inbox" if category == "inbox" else "active"),
+        "created_at": now,
+        "updated_at": now,
+        "sources": json_safe(sources),
+        "tags": tags,
+    }
+    if category == "drafts":
+        metadata["type"] = str(request.get("type") or "note").strip()
+        metadata["confidence"] = str(request.get("confidence") or "unknown").strip().lower()
+        validate_card_metadata(metadata, category)
+
+    ensure_scope_directories(scope)
+    destination = scope.knowledge_root / category / (
+        f"{filename_slug(title)}-{record_id.rsplit('-', 1)[-1][:8]}.md"
+    )
+    with destination.open("x", encoding="utf-8") as stream:
+        stream.write(markdown_record(metadata, content))
+    indexed = index_scope(scope)
+    document = get_document(scope, record_id)
+    return {
+        "scope": scope.as_dict(),
+        "path": str(destination),
+        "relativePath": destination.relative_to(scope.knowledge_root).as_posix(),
+        "index": indexed,
+        **document,
+    }
+
+
+def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, Any]:
+    if request.get("userConfirmed") is not True:
+        raise KnowledgeCoreError("publishing requires explicit user confirmation")
+    document_id = str(request.get("documentId") or "").strip()
+    if not document_id:
+        raise KnowledgeCoreError("publish requires documentId")
+    connection = connect_scope(scope, create=False)
+    if connection is None:
+        raise KnowledgeCoreError("knowledge index is not initialized")
+    try:
+        row = connection.execute(
+            """
+            SELECT relative_path, category, status FROM documents
+            WHERE scope_id = ? AND id = ? AND error IS NULL
+            """,
+            (scope.scope_id, document_id),
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise KnowledgeCoreError("draft knowledge card was not found")
+    if row["category"] not in {"drafts", "entries"} or row["status"] != "draft":
+        raise KnowledgeCoreError("only a draft knowledge card can be published")
+
+    source = (scope.knowledge_root / row["relative_path"]).resolve()
+    knowledge_root = scope.knowledge_root.resolve()
+    if not source.is_relative_to(knowledge_root) or source.suffix.lower() not in {".md", ".markdown"}:
+        raise KnowledgeCoreError("draft path is outside the knowledge root or is not Markdown")
+    metadata, content = parse_frontmatter(read_text(source))
+    metadata["status"] = "reviewed"
+    metadata["updated_at"] = utc_now()
+    validate_card_metadata(metadata, "cards")
+
+    destination = scope.knowledge_root / "cards" / source.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with destination.open("x", encoding="utf-8") as stream:
+            stream.write(markdown_record(metadata, content))
+    except FileExistsError as error:
+        raise KnowledgeCoreError(f"published card already exists: {destination.name}") from error
+    try:
+        source.unlink()
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+    indexed = index_scope(scope)
+    document = get_document(scope, document_id)
+    return {
+        "scope": scope.as_dict(),
+        "path": str(destination),
+        "relativePath": destination.relative_to(scope.knowledge_root).as_posix(),
+        "index": indexed,
+        **document,
+    }
+
+
 def handle_request(request: dict[str, Any]) -> dict[str, Any]:
     action = str(request.get("action") or "").strip().lower()
     if action == "search":
@@ -934,6 +1159,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
         return initialize_scope(scope)
     if action == "status":
         return scope_status(scope)
+    if action == "inventory":
+        return inventory_scope(scope, int(request.get("limit") or 500))
     if action == "index":
         return index_scope(scope, rebuild=False)
     if action == "rebuild":
@@ -943,6 +1170,10 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
         if not document_id:
             raise KnowledgeCoreError("get requires documentId")
         return get_document(scope, document_id)
+    if action == "capture":
+        return capture_record(scope, request)
+    if action == "publish":
+        return publish_card(scope, request)
     raise KnowledgeCoreError(f"unsupported knowledge action: {action or '<empty>'}")
 
 

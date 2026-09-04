@@ -167,7 +167,7 @@ GUI 原生命令定义在 AppState.nativeCommands，执行分派位于 executeNa
 
 ### 4.5 内置插件注册
 
-`PersonalPiPluginRegistry` 扫描 App bundle 中的 `PiPackages/`；源码运行时回退到 `Resources/PiPackages/`。每个可供 GUI 使用的 Pi Package 必须同时包含：
+`PersonalPiPluginRegistry` 扫描 App bundle 中的 `PiPackages/`；源码运行时回退到 `Resources/PiPackages/`。Figure 与 Knowledge 均通过这一入口加载。每个可供 GUI 使用的 Pi Package 必须同时包含：
 
 - 标准 `package.json`，由 Pi 决定加载哪些 Extensions、Skills、Prompts 和 Themes；
 - `personal-pi-plugin.json`，由 GUI 声明插件 ID、显示名、显式命令、设置命名空间和 artifact renderer。
@@ -337,6 +337,7 @@ UI 测试支持：
 4. Shell compatibility：验证真实安装版 Pi、RPC、Packages 和 Starter Pack。
    Figure 插件还必须运行 `scripts/check-figure-plugin.sh`，检查标准 Pi Package、显式 `/figure` 命令、真实三格式产物和默认清理策略。
    Knowledge Core 必须运行 `scripts/check-knowledge-core.sh`，检查作用域、结构化卡片、增量索引、PDF 定位、中英文检索和 JSON 协议。
+   Knowledge Pi Package 还必须运行 `scripts/check-knowledge-plugin.sh`，检查真实 Pi RPC 中的命令、Skill、Extension 和运行时调用。
 5. Manual GUI smoke：检查 Finder 启动、真实作用域切换、会话恢复和视觉布局。
 
 ## 12. 新功能接入模板
