@@ -1,6 +1,8 @@
 ---
 schema_version: 1
+id: ""
 title: ""
+type: concept
 created_at: ""
 updated_at: ""
 scope: global

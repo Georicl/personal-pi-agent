@@ -21,8 +21,14 @@ This contract separates Pi-owned runtime state, Personal Pi data, and project-ow
 │   ├── prompts/                   # Global prompt templates
 │   └── extensions/                # Global extensions
 ├── chat/                          # Global Chat cwd and temporary artifacts
-├── knowledge/                     # Global knowledge source files
-└── personal/                      # Future Personal Pi database and indexes
+├── knowledge/                     # Global knowledge source files and cards
+│   ├── inbox/
+│   ├── sources/
+│   ├── cards/
+│   ├── drafts/
+│   └── attachments/
+└── personal/
+    └── knowledge/                 # Rebuildable Global/Project SQLite indexes
 ```
 
 Rules:
@@ -41,6 +47,7 @@ Rules:
 - `sessionDir` may redirect session files globally or per project. Relative paths resolve from the Pi process cwd, while `~` resolves from the current user's home directory.
 - Session discovery always includes the default `~/.pi/agent/sessions/` tree plus every unique effective `sessionDir` for Global Chat and registered projects. Overlapping roots are deduplicated by canonical session-file path.
 - Global knowledge is an external source; it is retrieved on demand rather than injected wholesale into every prompt.
+- Human-readable files under `knowledge/` are authoritative. SQLite files under `personal/knowledge/` are derived indexes and may be rebuilt without changing knowledge content.
 
 ## Project scope
 
@@ -55,7 +62,12 @@ Rules:
     ├── prompts/                   # Project prompt templates
     ├── extensions/                # Project-only tools and integrations
     ├── themes/                    # Optional themes
-    ├── knowledge/                 # Project knowledge sources
+    ├── knowledge/                 # Project knowledge sources and cards
+    │   ├── inbox/
+    │   ├── sources/
+    │   ├── cards/
+    │   ├── drafts/
+    │   └── attachments/
     ├── artifacts/figures/         # Figure plugin image outputs
     └── npm/                       # Pi-managed package dependencies
 ```
@@ -67,6 +79,7 @@ Rules:
 - Project `.pi` resources load through Pi's native discovery; the GUI does not copy them into global storage.
 - Merely selecting a project does not create `.pi` or `.pi/knowledge`.
 - Opening or writing project knowledge may create `.pi/knowledge` explicitly.
+- Project-derived indexes are stored below `~/.pi/personal/knowledge/projects/<project-hash>/`, not inside the Git worktree.
 - Project resources should be trusted code and instructions. Pi trust is a loading guard, not a sandbox.
 
 ## Responsibility boundaries
@@ -79,7 +92,7 @@ Rules:
 | Work methods and staged procedures | Skills |
 | Reusable prompt expansion | Prompt templates |
 | New tools, lifecycle hooks, external integrations | Extensions |
-| Long-term structured knowledge and retrieval indexes | Future Personal Pi knowledge layer |
+| Long-term structured knowledge and retrieval indexes | Knowledge Core runtime; source files remain authoritative |
 | Figure selection and revision guidance | Bundled `figure` Skill inside the Figure Pi Package |
 | Data inspection, rendering and validation | Bundled Figure Extension and locked Python runner |
 | Figure preview index and export presentation | Swift GUI |
