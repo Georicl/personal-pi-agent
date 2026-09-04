@@ -49,3 +49,14 @@ enum PersonalPiRuntimeEnvironment {
         return isUITesting || value == "1" || value == "true" || value == "yes"
     }
 }
+
+enum PersonalPiPreferences {
+    @MainActor
+    static let store: UserDefaults = {
+        guard PersonalPiRuntimeEnvironment.isUITesting else { return .standard }
+        let suiteName = "dev.pi.personal.ui-testing"
+        let store = UserDefaults(suiteName: suiteName) ?? .standard
+        store.removePersistentDomain(forName: suiteName)
+        return store
+    }()
+}

@@ -228,8 +228,6 @@
 "Pi returned an invalid package response" = "Pi returned an invalid package response";
 
 /* Figure plugin */
-"Figure" = "Figure";
-"Start a figure request" = "Start a figure request";
 "Figure preview" = "Figure preview";
 "Open figure preview" = "Open figure preview";
 "Close figure preview" = "Close figure preview";

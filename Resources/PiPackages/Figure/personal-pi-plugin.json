@@ -12,7 +12,7 @@
   ],
   "settingsNamespace": "figure",
   "gui": {
-    "toolbarButton": true,
+    "toolbarButton": false,
     "artifactSidebar": true
   }
 }

@@ -2,7 +2,10 @@ import SwiftUI
 
 struct SessionsView: View {
     @EnvironmentObject private var appState: AppState
-    @AppStorage("personalPi.showActivityDrawer") private var showActivityDrawer = true
+    @AppStorage(
+        "personalPi.showActivityDrawer",
+        store: PersonalPiPreferences.store
+    ) private var showActivityDrawer = false
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.system.rawValue
 
     private var interfaceLocale: Locale {
@@ -18,8 +21,7 @@ struct SessionsView: View {
             if showActivityDrawer {
                 Hairline(axis: .vertical)
                 AgentActivityPanel(
-                    usageStore: appState.usageStore,
-                    showActivityDrawer: $showActivityDrawer
+                    usageStore: appState.usageStore
                 )
                     .frame(width: 270)
             }
@@ -370,6 +372,41 @@ struct SessionToolbar: View {
                 .buttonStyle(.plain)
             }
 
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    showActivityDrawer.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 10.5, weight: .medium))
+                    Text("Agent activity")
+                        .font(Theme.sans(10.5, weight: .medium))
+                    if !appState.activities.isEmpty {
+                        Text("\(appState.activities.count)")
+                            .font(Theme.mono(9, weight: .medium))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Theme.panel, in: Capsule())
+                    }
+                }
+                .foregroundStyle(showActivityDrawer ? Theme.accentInk : Theme.muted)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(
+                    showActivityDrawer ? Theme.accentFill : Theme.panel,
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(showActivityDrawer ? Theme.accentSoft : Theme.line, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .help(showActivityDrawer ? "Hide agent activity" : "Show agent activity")
+            .accessibilityIdentifier("agent-activity-toggle")
+            .accessibilityValue(showActivityDrawer ? "shown" : "hidden")
+
             Menu {
                 Button("Session information") { appState.presentSessionInfo() }
                 Button("Session tree") { appState.presentSessionTree() }
@@ -400,17 +437,6 @@ struct SessionToolbar: View {
             .background(Theme.accent, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .buttonStyle(.plain)
 
-            if !showActivityDrawer {
-                Button {
-                    showActivityDrawer = true
-                } label: {
-                    Image(systemName: "sidebar.trailing")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.muted)
-                }
-                .buttonStyle(.plain)
-                .help("Show agent activity")
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -575,7 +601,6 @@ struct ComposerBar: View {
 struct AgentActivityPanel: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var usageStore: AccountUsageStore
-    @Binding var showActivityDrawer: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -587,15 +612,6 @@ struct AgentActivityPanel: View {
                 Text("\(appState.activities.count) tool\(appState.activities.count == 1 ? "" : "s")")
                     .font(Theme.mono(10))
                     .foregroundStyle(Theme.dim)
-                Button {
-                    showActivityDrawer = false
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Theme.dim)
-                }
-                .buttonStyle(.plain)
-                .help("Hide activity")
             }
             .padding(14)
             .overlay(alignment: .bottom) { Hairline() }
@@ -638,6 +654,8 @@ struct AgentActivityPanel: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.panel)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("agent-activity-panel")
     }
 }
 

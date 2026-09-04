@@ -153,11 +153,11 @@ struct FigureArtifactTests {
         store.upsert(artifact)
 
         let view = ArtifactSidebarView(isVisible: .constant(true), store: store)
-            .frame(width: 340, height: 680)
+            .frame(width: 440, height: 680)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         let image = try #require(renderer.nsImage)
-        #expect(image.size.width == 340)
+        #expect(image.size.width == 440)
         #expect(image.size.height == 680)
     }
 

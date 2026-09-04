@@ -25,6 +25,7 @@ struct ArtifactSidebarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.panel)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("figure-artifact-sidebar")
     }
 

@@ -93,6 +93,12 @@
 "Agent activity" = "智能体活动";
 "Tool calls from this turn will appear here." = "本轮工具调用会显示在这里。";
 "Hide activity" = "隐藏活动";
+"Show agent activity" = "显示智能体活动";
+"Hide agent activity" = "隐藏智能体活动";
+"shown" = "已显示";
+"hidden" = "已隐藏";
+"Resize figure preview" = "调整图片预览宽度";
+"Drag to resize figure preview" = "拖动以调整图片预览宽度";
 "This session" = "当前会话";
 "stats synced from pi rpc" = "统计数据来自 Pi RPC";
 "Compact" = "压缩上下文";
@@ -454,8 +460,6 @@
 "Pi returned an invalid package response" = "Pi 返回了无效的包管理响应";
 
 /* Figure plugin */
-"Figure" = "绘图";
-"Start a figure request" = "开始绘图";
 "Figure preview" = "图片预览";
 "Open figure preview" = "打开图片预览";
 "Close figure preview" = "关闭图片预览";
