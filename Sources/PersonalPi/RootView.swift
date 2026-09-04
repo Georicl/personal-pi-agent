@@ -463,43 +463,58 @@ struct DetailView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(spacing: 0) {
-            TopBar()
-            switch appState.selectedSection {
-            case .overview:
-                ScrollView(showsIndicators: false) {
-                    OverviewView()
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                TopBar()
+                switch appState.selectedSection {
+                case .overview:
+                    ScrollView(showsIndicators: false) {
+                        OverviewView()
+                    }
+                case .sessions:
+                    SessionsView()
+                case .knowledge:
+                    ScrollView(showsIndicators: false) {
+                        KnowledgeView()
+                    }
+                case .packages:
+                    ScrollView(showsIndicators: false) {
+                        PackagesView()
+                    }
+                case .projects:
+                    ScrollView(showsIndicators: false) {
+                        ProjectsView()
+                    }
+                case .tasks:
+                    ScrollView(showsIndicators: false) {
+                        TasksView()
+                    }
+                case .diagnostics:
+                    ScrollView(showsIndicators: false) {
+                        RuntimeDiagnosticsView()
+                    }
+                case .settings:
+                    ScrollView(showsIndicators: false) {
+                        SettingsView()
+                    }
+                    .accessibilityIdentifier("settings-scroll-view")
                 }
-            case .sessions:
-                SessionsView()
-            case .knowledge:
-                ScrollView(showsIndicators: false) {
-                    KnowledgeView()
-                }
-            case .packages:
-                ScrollView(showsIndicators: false) {
-                    PackagesView()
-                }
-            case .projects:
-                ScrollView(showsIndicators: false) {
-                    ProjectsView()
-                }
-            case .tasks:
-                ScrollView(showsIndicators: false) {
-                    TasksView()
-                }
-            case .diagnostics:
-                ScrollView(showsIndicators: false) {
-                    RuntimeDiagnosticsView()
-                }
-            case .settings:
-                ScrollView(showsIndicators: false) {
-                    SettingsView()
-                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if appState.isArtifactSidebarVisible {
+                Hairline(axis: .vertical)
+                ArtifactSidebarView(
+                    isVisible: $appState.isArtifactSidebarVisible,
+                    store: appState.figureArtifactStore
+                )
+                    .frame(width: 340)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvas)
+        .animation(.easeInOut(duration: 0.18), value: appState.isArtifactSidebarVisible)
     }
 }
 
@@ -516,6 +531,11 @@ struct TopBar: View {
             AgentStatusPill()
 
             Spacer(minLength: 0)
+
+            FigureArtifactToggle(
+                isVisible: $appState.isArtifactSidebarVisible,
+                store: appState.figureArtifactStore
+            )
 
             Text(PiFormat.todayLabel(locale: locale))
                 .font(Theme.mono(10.5))
@@ -536,6 +556,34 @@ struct TopBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .overlay(alignment: .bottom) { Hairline(color: Theme.rule) }
+    }
+}
+
+private struct FigureArtifactToggle: View {
+    @Binding var isVisible: Bool
+    @ObservedObject var store: FigureArtifactStore
+
+    var body: some View {
+        Button {
+            isVisible.toggle()
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: isVisible
+                    ? "rectangle.righthalf.inset.filled"
+                    : "photo.on.rectangle")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(isVisible ? Theme.accent : Theme.muted)
+                    .frame(width: 24, height: 24)
+                if store.hasArtifacts {
+                    Circle()
+                        .fill(Theme.accent)
+                        .frame(width: 5, height: 5)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .help(isVisible ? "Close figure preview" : "Open figure preview")
+        .accessibilityIdentifier("figure-artifact-sidebar-toggle")
     }
 }
 

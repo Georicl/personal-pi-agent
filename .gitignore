@@ -2,6 +2,9 @@ node_modules/
 .build/
 Build/
 .swiftpm/
+.venv/
+__pycache__/
+*.py[cod]
 xcuserdata/
 .env
 .env.*

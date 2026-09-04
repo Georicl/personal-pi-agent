@@ -14,6 +14,7 @@ AppState (@MainActor)
     ├── PiPackageBridge ── Node bridge ── Pi SettingsManager / PackageManager
     ├── AccountUsageStore ── Pi auth check + local Codex App Server
     ├── PiTaskStore ── local JSON
+    ├── FigureArtifactStore ── structured tool details + local JSON index
     └── Session Catalog / Workspace Inspector ── filesystem + Git
 ~~~
 
@@ -35,7 +36,8 @@ RootView.swift 负责固定外壳：
 WindowChrome
 SidebarView (238 pt)
 DetailView
-    └── TopBar + active page
+    ├── TopBar + active page
+    └── ArtifactSidebarView (optional, global across pages)
 ~~~
 
 AppSection 与页面映射：
@@ -149,6 +151,17 @@ PiSavedSession.id 是任务归并使用的稳定身份。同一 Session 中继�
 | presentProviderAccounts(...) | 打开 Pi 原生登录/退出流程 |
 | applySettingsChange() | 保存配置后刷新目录并重启运行时 |
 
+### 4.4 图片产物
+
+| 状态或接口 | 用途 |
+|---|---|
+| `isArtifactSidebarVisible` | 全局右侧栏开关；不属于某个页面 |
+| `figureArtifactStore` | artifact 索引、当前选择、版本聚合与恢复 |
+| `FigureArtifact` | `personalPiFigureArtifact` manifest 的类型化表示 |
+| `FigureExporter` | PDF 矢量重排与 PNG/TIFF 尺寸、DPI 导出 |
+
+`tool_execution_end` 携带图片 manifest 时，AppState 必须先 `upsert`，再自动显示右侧栏。切换 Session 优先选择相同 `sessionId` 的最近图片；切换 Project/Global 时回退到相同 CWD 的最近图片。
+
 GUI 原生命令定义在 AppState.nativeCommands，执行分派位于 executeNativeCommand(_:)。新增原生命令时必须同时加入两处，并补充命令面板测试。
 
 ## 5. PiRPCClient 接口
@@ -213,6 +226,8 @@ navigateTree 和资源 reload 在 Pi 0.84.3 中不是普通 RPC；它们通过�
 - compaction_start、compaction_end
 - extension_error
 
+`tool_execution_end.result.details.personalPiFigureArtifact` 会被独立解析为 `PiStreamEvent.figureArtifact`。聊天文本只用于人类阅读，不是产物接口。manifest v1 的完整字段见 [Scientific Figure 工作流](scientific-figure.md#7-artifact-manifest)。
+
 extension_ui_request 走独立的 PiUIRequest 通道。当前 Session 页支持 confirm、select、input/editor 的基础卡片；notify、status、widget、title 和 editor text 尚未形成完整的 macOS 表现层。
 
 待接入事件包括 queue_update、直接 RPC Bash 的 bash_execution_update、retry telemetry 以及更完整的 branch/tree 事件。新增事件时不得用单个字符串字段承载全部结构；先增加对应数据模型。
@@ -264,6 +279,9 @@ AccountUsageStore 聚合：
 | Global Knowledge | ~/.pi/knowledge/ | Personal Pi |
 | Project Knowledge | project/.pi/knowledge/ | Project |
 | Task records | ~/.pi/agent/personal-pi-tasks.json | Personal Pi |
+| Figure artifact index | ~/.pi/agent/personal-pi-figure-artifacts.json | Personal Pi |
+| Project figures | project/.pi/artifacts/figures/ | Scientific Figure Extension |
+| Global Chat figures | ~/.pi/chat/.pi/artifacts/figures/ | Scientific Figure Extension |
 | Registered projects | UserDefaults personalPi.workspacePaths | Personal Pi |
 | Interface language | UserDefaults personalPi.appLanguage | Personal Pi |
 
@@ -294,6 +312,8 @@ UI 测试支持：
 | PERSONAL_PI_UI_TESTING=1 | 关闭外部进程并使用确定性测试状态 |
 | PERSONAL_PI_DATA_ROOT=path | 将 ~/.pi 替换为临时目录 |
 | PERSONAL_PI_DISABLE_EXTERNAL_PROCESSES=1 | 禁止 Pi、Node、Codex 子进程 |
+| PERSONAL_PI_UV_EXECUTABLE=path | 覆盖 Scientific Figure 使用的 uv |
+| PERSONAL_PI_FIGURE_ENVIRONMENT=path | 覆盖受管理的绘图 Python 环境 |
 
 测试层次：
 
@@ -301,6 +321,7 @@ UI 测试支持：
 2. Xcode unit：验证正式工程 target 与资源集成。
 3. XCUITest：验证导航、本地化和主要交互入口。
 4. Shell compatibility：验证真实安装版 Pi、RPC、Packages 和 Starter Pack。
+   Scientific Figure 还必须运行 `scripts/check-scientific-figure.sh`，检查真实三格式产物和默认清理策略。
 5. Manual GUI smoke：检查 Finder 启动、真实作用域切换、会话恢复和视觉布局。
 
 ## 12. 新功能接入模板
@@ -316,9 +337,9 @@ UI 测试支持：
 7. **验证**：unit、UI、真实 Pi smoke、产物级验证。
 8. **更新文档**：README、本文档和 Pi compatibility record。
 
-### 产物预览扩展点
+### 产物预览接口
 
-当前 DetailView 只渲染一个活动页面。图片、PDF、报告等产物的推荐扩展方式是：
+DetailView 已实现全局可折叠产物栏：
 
 ~~~text
 DetailView
@@ -329,4 +350,4 @@ DetailView
     └── Export actions
 ~~~
 
-后续实现时应新增独立的 ArtifactPresentationState，由 AppState 持有当前产物引用；不要从聊天文本中猜测文件路径，也不要让每个页面自行维护一套右侧栏状态。产物接口至少应包含稳定 ID、源文件、预览文件、MIME/UTType、支持导出格式、物理尺寸、DPI、生成时间、所属 Project/Session 和验证结果。
+Scientific Figure 通过 `FigureArtifactStore` 实现第一种 schema。后续 PDF、报告等类型应扩展为显式 artifact kind/schema，并复用全局容器；不要从聊天文本中猜测文件路径，也不要让每个页面自行维护一套右侧栏状态。任何新 schema 至少应包含稳定 ID、源文件、预览文件、MIME/UTType、支持导出格式、物理尺寸或页面信息、生成时间、所属 Project/Session 和验证结果。

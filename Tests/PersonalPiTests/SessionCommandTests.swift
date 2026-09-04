@@ -61,4 +61,25 @@ struct SessionCommandTests {
         #expect(arguments.indices.contains(flagIndex + 1))
         #expect(arguments[flagIndex + 1] == extensionURL.path)
     }
+
+    @Test("Pi launches with the scientific figure extension and skill")
+    func includesScientificFigureResources() throws {
+        let extensionURL = try #require(PiLaunchConfiguration.scientificFigureExtensionURL)
+        let skillURL = try #require(PiLaunchConfiguration.scientificFigureSkillURL)
+        let arguments = PiLaunchConfiguration.arguments(projectTrusted: true)
+
+        #expect(arguments.containsSubsequence(["--extension", extensionURL.path]))
+        #expect(arguments.containsSubsequence(["--skill", skillURL.path]))
+    }
+}
+
+private extension Array where Element: Equatable {
+    func containsSubsequence(_ subsequence: [Element]) -> Bool {
+        guard !subsequence.isEmpty, subsequence.count <= count else { return false }
+        return indices.contains { start in
+            let end = index(start, offsetBy: subsequence.count, limitedBy: endIndex) ?? endIndex
+            return distance(from: start, to: end) == subsequence.count
+                && Array(self[start..<end]) == subsequence
+        }
+    }
 }

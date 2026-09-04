@@ -60,6 +60,7 @@ enum RuntimeDiagnosticsInspector {
         let fileManager = FileManager.default
         let piExecutable = PiLaunchConfiguration.resolvedExecutable()
         let nodeExecutable = PiLaunchConfiguration.resolvedNodeExecutable()
+        let uvExecutable = PiLaunchConfiguration.resolvedUvExecutable()
 
         let runtime = RuntimeDiagnosticSection(
             id: "runtime",
@@ -76,6 +77,23 @@ enum RuntimeDiagnosticsInspector {
                     title: "Node.js",
                     executable: nodeExecutable,
                     versionArguments: ["--version"]
+                ),
+                executableItem(
+                    id: "uv",
+                    title: "uv",
+                    executable: uvExecutable,
+                    versionArguments: ["--version"],
+                    missingDetail: "Install uv, set PERSONAL_PI_UV_EXECUTABLE, or configure a Scientific Figure Python override.",
+                    missingLevel: .warning
+                ),
+                RuntimeDiagnosticItem(
+                    id: "scientific-figure-runtime",
+                    title: "Scientific figure runtime",
+                    value: PiLaunchConfiguration.scientificFigureResourceURL == nil ? "Missing" : "Bundled",
+                    detail: PiLaunchConfiguration.scientificFigureResourceURL
+                        .map { PiFormat.path($0.path) }
+                        ?? "The extension, skill, Python runner or lock file is incomplete.",
+                    level: PiLaunchConfiguration.scientificFigureResourceURL == nil ? .error : .ok
                 ),
                 RuntimeDiagnosticItem(
                     id: "rpc",
@@ -195,15 +213,17 @@ enum RuntimeDiagnosticsInspector {
         id: String,
         title: String,
         executable: String?,
-        versionArguments: [String]
+        versionArguments: [String],
+        missingDetail: String = "Check the runtime installation or set the Personal Pi executable override.",
+        missingLevel: RuntimeDiagnosticLevel = .error
     ) -> RuntimeDiagnosticItem {
         guard let executable else {
             return RuntimeDiagnosticItem(
                 id: id,
                 title: title,
                 value: "Not found",
-                detail: "Check the runtime installation or set the Personal Pi executable override.",
-                level: .error
+                detail: missingDetail,
+                level: missingLevel
             )
         }
         let version = commandOutput(executable: executable, arguments: versionArguments) ?? "Version unavailable"
