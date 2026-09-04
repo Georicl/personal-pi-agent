@@ -532,6 +532,22 @@ struct TopBar: View {
 
             Spacer(minLength: 0)
 
+            if appState.figurePluginAvailable {
+                Button {
+                    appState.beginFigureRequest()
+                } label: {
+                    Label("Figure", systemImage: "chart.xyaxis.line")
+                        .font(Theme.mono(10.5, weight: .medium))
+                        .foregroundStyle(Theme.accentInk)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Theme.accentFill, in: RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .help("Start a figure request")
+                .accessibilityIdentifier("figure-plugin-button")
+            }
+
             FigureArtifactToggle(
                 isVisible: $appState.isArtifactSidebarVisible,
                 store: appState.figureArtifactStore

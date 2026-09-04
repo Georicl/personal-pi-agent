@@ -83,17 +83,17 @@ enum RuntimeDiagnosticsInspector {
                     title: "uv",
                     executable: uvExecutable,
                     versionArguments: ["--version"],
-                    missingDetail: "Install uv, set PERSONAL_PI_UV_EXECUTABLE, or configure a Scientific Figure Python override.",
+                    missingDetail: "Install uv, set PERSONAL_PI_UV_EXECUTABLE, or configure a Figure Python override.",
                     missingLevel: .warning
                 ),
                 RuntimeDiagnosticItem(
-                    id: "scientific-figure-runtime",
-                    title: "Scientific figure runtime",
-                    value: PiLaunchConfiguration.scientificFigureResourceURL == nil ? "Missing" : "Bundled",
-                    detail: PiLaunchConfiguration.scientificFigureResourceURL
+                    id: "figure-plugin",
+                    title: "Figure plugin",
+                    value: PiLaunchConfiguration.figurePluginPackageURL == nil ? "Missing" : "Bundled package",
+                    detail: PiLaunchConfiguration.figurePluginPackageURL
                         .map { PiFormat.path($0.path) }
-                        ?? "The extension, skill, Python runner or lock file is incomplete.",
-                    level: PiLaunchConfiguration.scientificFigureResourceURL == nil ? .error : .ok
+                        ?? "The Pi package or Personal Pi plugin manifest is missing.",
+                    level: PiLaunchConfiguration.figurePluginPackageURL == nil ? .error : .ok
                 ),
                 RuntimeDiagnosticItem(
                     id: "rpc",

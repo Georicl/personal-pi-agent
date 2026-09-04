@@ -104,8 +104,8 @@ struct SettingsFileTests {
         PiSettingsFile.setStringList("pnpm\n--silent", key: "npmCommand", in: &document)
         PiSettingsFile.setOptionalBool(.enabled, path: ["branchSummary", "skipPrompt"], in: &document)
         PiSettingsFile.setOptionalBool(.disabled, path: ["warnings", "anthropicExtraUsage"], in: &document)
-        PiSettingsFile.setValue("/opt/project/.venv/bin/python", path: ["scientificFigure", "pythonPath"], in: &document)
-        PiSettingsFile.setOptionalBool(.disabled, path: ["scientificFigure", "keepWorkFiles"], in: &document)
+        PiSettingsFile.setValue("/opt/project/.venv/bin/python", path: ["figure", "pythonPath"], in: &document)
+        PiSettingsFile.setOptionalBool(.disabled, path: ["figure", "keepWorkFiles"], in: &document)
 
         #expect(document["httpProxy"] as? String == "http://127.0.0.1:7890")
         #expect((document["httpIdleTimeoutMs"] as? NSNumber)?.intValue == 45000)
@@ -115,8 +115,49 @@ struct SettingsFileTests {
         #expect(document["npmCommand"] as? [String] == ["pnpm", "--silent"])
         #expect(PiSettingsFile.value(in: document, path: ["branchSummary", "skipPrompt"]) as? Bool == true)
         #expect(PiSettingsFile.value(in: document, path: ["warnings", "anthropicExtraUsage"]) as? Bool == false)
-        #expect(PiSettingsFile.value(in: document, path: ["scientificFigure", "pythonPath"]) as? String == "/opt/project/.venv/bin/python")
-        #expect(PiSettingsFile.value(in: document, path: ["scientificFigure", "keepWorkFiles"]) as? Bool == false)
+        #expect(PiSettingsFile.value(in: document, path: ["figure", "pythonPath"]) as? String == "/opt/project/.venv/bin/python")
+        #expect(PiSettingsFile.value(in: document, path: ["figure", "keepWorkFiles"]) as? Bool == false)
         #expect(document["futureSetting"] as? Bool == true)
+    }
+
+    @Test("Legacy figure settings can migrate without deleting unknown siblings")
+    func migratesLegacyFigureSettings() {
+        var document: [String: Any] = [
+            "scientificFigure": [
+                "pythonPath": "/legacy/python",
+                "keepWorkFiles": true,
+                "futureSetting": "preserved",
+            ],
+        ]
+
+        PiSettingsFile.setValue("/new/python", path: ["figure", "pythonPath"], in: &document)
+        PiSettingsFile.setOptionalBool(.disabled, path: ["figure", "keepWorkFiles"], in: &document)
+        PiSettingsFile.setValue(nil, path: ["scientificFigure", "pythonPath"], in: &document)
+        PiSettingsFile.setValue(nil, path: ["scientificFigure", "keepWorkFiles"], in: &document)
+
+        #expect(PiSettingsFile.value(in: document, path: ["figure", "pythonPath"]) as? String == "/new/python")
+        #expect(PiSettingsFile.value(in: document, path: ["figure", "keepWorkFiles"]) as? Bool == false)
+        #expect(PiSettingsFile.value(in: document, path: ["scientificFigure", "futureSetting"]) as? String == "preserved")
+    }
+
+    @Test("Project Figure settings override Global across legacy namespaces")
+    func resolvesFigureScopePrecedenceDuringMigration() {
+        let global: [String: Any] = [
+            "figure": ["pythonPath": "/global/new", "keepWorkFiles": false],
+        ]
+        let legacyProject: [String: Any] = [
+            "scientificFigure": ["pythonPath": "/project/legacy"],
+        ]
+
+        #expect(PiSettingsFile.effectiveFigureValue(
+            global: global,
+            project: legacyProject,
+            key: "pythonPath"
+        ) as? String == "/project/legacy")
+        #expect(PiSettingsFile.effectiveFigureValue(
+            global: global,
+            project: legacyProject,
+            key: "keepWorkFiles"
+        ) as? Bool == false)
     }
 }

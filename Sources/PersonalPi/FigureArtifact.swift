@@ -161,7 +161,8 @@ final class FigureArtifactStore: ObservableObject {
     }
 
     func upsert(_ artifact: FigureArtifact) {
-        guard artifact.kind == "scientific-figure", artifact.schemaVersion == 1 else { return }
+        guard ["figure", "scientific-figure"].contains(artifact.kind),
+              artifact.schemaVersion == 1 else { return }
         if let index = artifacts.firstIndex(where: { $0.id == artifact.id }) {
             artifacts[index] = artifact
         } else {

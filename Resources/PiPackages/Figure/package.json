@@ -1,0 +1,21 @@
+{
+  "name": "@personal-pi/figure",
+  "version": "0.1.0",
+  "description": "Figure generation, validation, revision, and artifact integration for Personal Pi.",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "extensions"
+    ],
+    "skills": [
+      "skills"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}

@@ -11,6 +11,7 @@ struct SlashCommandInput: View {
 
     @State private var commandSelection = 0
     @State private var commandPaletteDismissed = false
+    @FocusState private var composerFocused: Bool
 
     private var commandQuery: String? {
         guard appState.composerText.hasPrefix("/") else { return nil }
@@ -49,6 +50,7 @@ struct SlashCommandInput: View {
                     .font(Theme.sans(13.5))
                     .lineLimit(1...maximumLines)
                     .onSubmit { submit() }
+                    .focused($composerFocused)
                     .accessibilityIdentifier("composer-input")
 
                 Button {
@@ -93,6 +95,9 @@ struct SlashCommandInput: View {
             if !value.hasPrefix("/") || value == "/" || !value.contains(where: { $0.isWhitespace }) {
                 commandPaletteDismissed = false
             }
+        }
+        .onChange(of: appState.composerFocusRequest) { _ in
+            composerFocused = true
         }
     }
 

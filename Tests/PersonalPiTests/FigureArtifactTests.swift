@@ -5,7 +5,7 @@ import SwiftUI
 import Testing
 @testable import PersonalPi
 
-@Suite("Scientific figure artifacts")
+@Suite("Figure artifacts")
 struct FigureArtifactTests {
     @Test("Pi tool details decode into a figure artifact")
     func decodesToolResultArtifact() throws {
@@ -17,7 +17,7 @@ struct FigureArtifactTests {
         let event = try #require(PiRPCClient.parseEvent([
             "type": "tool_execution_end",
             "toolCallId": "tool-1",
-            "toolName": "scientific_figure_render",
+            "toolName": "figure_render",
             "isError": false,
             "result": [
                 "content": [["type": "text", "text": "Validation passed"]],
@@ -74,6 +74,21 @@ struct FigureArtifactTests {
 
         #expect(store.versions(for: first).map(\.id) == [first.id])
         #expect(store.versions(for: second).map(\.id) == [second.id])
+    }
+
+    @Test("Legacy scientific-figure artifacts remain readable after plugin migration")
+    @MainActor
+    func acceptsLegacyArtifactKind() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var object = manifestObject(previewPath: "/tmp/legacy.png")
+        object["kind"] = "scientific-figure"
+        let artifact = try #require(FigureArtifact.decode(object))
+        let store = FigureArtifactStore(storageURL: directory.appendingPathComponent("index.json"))
+        store.upsert(artifact)
+
+        #expect(store.artifacts.map(\.id) == [artifact.id])
     }
 
     @Test("Export dimensions and raster DPI obey publication bounds")
@@ -201,7 +216,7 @@ struct FigureArtifactTests {
     private func manifestObject(previewPath: String) -> [String: Any] {
         [
             "schemaVersion": 1,
-            "kind": "scientific-figure",
+            "kind": "figure",
             "id": "figure-1-v001",
             "figureId": "figure-1",
             "version": 1,

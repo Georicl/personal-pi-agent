@@ -11,13 +11,16 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 
-const resourceRoot = dirname(fileURLToPath(import.meta.url));
-const runnerPath = join(resourceRoot, "runner.py");
-const bundledProjectPath = join(resourceRoot, "pyproject.toml");
-const bundledLockPath = join(resourceRoot, "uv.lock");
+const extensionRoot = dirname(fileURLToPath(import.meta.url));
+const packageRoot = resolve(extensionRoot, "..");
+const runtimeRoot = join(packageRoot, "runtime");
+const runnerPath = join(runtimeRoot, "runner.py");
+const bundledProjectPath = join(runtimeRoot, "pyproject.toml");
+const bundledLockPath = join(runtimeRoot, "uv.lock");
 const libraryReferencePath = join(
-  resourceRoot,
-  "skill",
+  packageRoot,
+  "skills",
+  "figure",
   "references",
   "library-routing.md",
 );
@@ -89,7 +92,15 @@ function effectiveSettings(cwd) {
   return {
     agentDirectory,
     settings: deepMerge(globalSettings, projectSettings),
+    figure: deepMerge(
+      scopedFigureConfiguration(globalSettings),
+      scopedFigureConfiguration(projectSettings),
+    ),
   };
+}
+
+function scopedFigureConfiguration(settings) {
+  return deepMerge(settings.scientificFigure ?? {}, settings.figure ?? {});
 }
 
 function copyIfChanged(source, destination) {
@@ -174,8 +185,7 @@ function runProcess(command, args, input, options = {}) {
 }
 
 async function managedPython(cwd, signal, onUpdate) {
-  const { agentDirectory, settings } = effectiveSettings(cwd);
-  const configuration = settings.scientificFigure ?? {};
+  const { agentDirectory, figure: configuration } = effectiveSettings(cwd);
   if (typeof configuration.pythonPath === "string" && configuration.pythonPath) {
     return {
       python: expandPath(configuration.pythonPath, cwd),
@@ -186,7 +196,7 @@ async function managedPython(cwd, signal, onUpdate) {
 
   const environmentRoot = expandPath(
     process.env.PERSONAL_PI_FIGURE_ENVIRONMENT ||
-      join(agentDirectory, "environments", "scientific-figure"),
+      join(agentDirectory, "environments", "figure"),
     cwd,
   );
   mkdirSync(environmentRoot, { recursive: true });
@@ -199,7 +209,7 @@ async function managedPython(cwd, signal, onUpdate) {
         content: [
           {
             type: "text",
-            text: "Preparing the locked scientific Python environment…",
+            text: "Preparing the locked figure Python environment…",
           },
         ],
       });
@@ -251,13 +261,13 @@ function parseRunnerOutput(result) {
   throw new Error(
     result.stderr.trim() ||
       result.stdout.trim() ||
-      `Scientific figure runner exited with code ${result.code}`,
+      `Figure runner exited with code ${result.code}`,
   );
 }
 
 async function runRunner(ctx, request, signal, onUpdate) {
   if (!existsSync(runnerPath) || !existsSync(bundledProjectPath) || !existsSync(bundledLockPath)) {
-    throw new Error("Scientific figure runtime resources are incomplete");
+    throw new Error("Figure plugin runtime resources are incomplete");
   }
   const runtime = await managedPython(ctx.cwd, signal, onUpdate);
   const result = await runProcess(
@@ -273,7 +283,7 @@ async function runRunner(ctx, request, signal, onUpdate) {
   );
   const payload = parseRunnerOutput(result);
   if (!payload.success) {
-    throw new Error(payload.error || "Scientific figure runner failed");
+    throw new Error(payload.error || "Figure runner failed");
   }
   return { payload, configuration: runtime.configuration };
 }
@@ -311,7 +321,7 @@ function inspectionSummary(inspection) {
 function validationSummary(artifact) {
   const validation = artifact.validation ?? {};
   const lines = [
-    `Scientific figure ${artifact.figureId}, iteration ${artifact.version}/${MAX_ITERATIONS}`,
+    `Figure ${artifact.figureId}, iteration ${artifact.version}/${MAX_ITERATIONS}`,
     `Validation: ${validation.passed ? "passed" : "needs revision"} (score ${validation.score ?? 0})`,
     `Size: ${artifact.widthMm} × ${artifact.heightMm} mm; raster DPI: ${artifact.dpi}`,
     `Formats: ${(artifact.files ?? []).map((item) => item.format).join(", ")}`,
@@ -406,7 +416,7 @@ async function documentationResult(library, topic, signal) {
     searchURL.searchParams.set("q", topic);
     const response = await fetch(searchURL, {
       signal: controller.signal,
-      headers: { "user-agent": "PersonalPi/0.1 scientific-figure-docs" },
+      headers: { "user-agent": "PersonalPi/0.1 figure-plugin-docs" },
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const excerpt = stripHtml(await response.text()).slice(0, 8000);
@@ -424,9 +434,39 @@ async function documentationResult(library, topic, signal) {
   }
 }
 
-export default function scientificFigureExtension(pi) {
-  pi.registerCommand("__personal_pi_scientific_figure", {
-    description: "Internal Personal Pi scientific-figure runtime check",
+export default function figureExtension(pi) {
+  pi.registerCommand("figure", {
+    description: "Create or revise a figure from data",
+    handler: async (args, ctx) => {
+      const request = args.trim();
+      if (!request) {
+        ctx.ui.notify("Usage: /figure <request and data paths>", "warning");
+        return;
+      }
+
+      pi.appendEntry("personal-pi.figure-request", {
+        request,
+        cwd: ctx.cwd,
+        createdAt: new Date().toISOString(),
+      });
+      const kickoff = [
+        "Complete this request with the Personal Pi Figure plugin:",
+        request,
+        "",
+        "Use figure_inspect_data for every input before plotting, then use figure_render.",
+        "Revise failed validation with the same figureId for at most five versions.",
+        "Do not run inferential statistics until the user has explicitly confirmed the proposed method.",
+      ].join("\n");
+      if (ctx.isIdle()) {
+        pi.sendUserMessage(kickoff);
+      } else {
+        pi.sendUserMessage(kickoff, { deliverAs: "followUp" });
+      }
+    },
+  });
+
+  pi.registerCommand("__personal_pi_figure", {
+    description: "Internal Personal Pi figure runtime check",
     handler: async (args, ctx) => {
       const encoded = args.trim();
       if (!encoded) return;
@@ -434,13 +474,13 @@ export default function scientificFigureExtension(pi) {
       try {
         request = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
       } catch {
-        throw new Error("Invalid scientific-figure runtime check payload");
+        throw new Error("Invalid figure runtime check payload");
       }
       if (
         typeof request.responsePath !== "string" ||
         !isAbsolute(request.responsePath)
       ) {
-        throw new Error("Scientific-figure runtime check requires an absolute response path");
+        throw new Error("Figure runtime check requires an absolute response path");
       }
       try {
         const { payload } = await runRunner(ctx, { action: "capabilities" });
@@ -463,10 +503,10 @@ export default function scientificFigureExtension(pi) {
   });
 
   pi.registerTool({
-    name: "scientific_figure_capabilities",
-    label: "Scientific figure capabilities",
+    name: "figure_capabilities",
+    label: "Figure capabilities",
     description:
-      "List supported scientific figure inputs, outputs, dimensions, libraries, and plot families.",
+      "List supported figure inputs, outputs, dimensions, libraries, and plot families.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, signal, onUpdate, ctx) {
       try {
@@ -492,10 +532,10 @@ export default function scientificFigureExtension(pi) {
   });
 
   pi.registerTool({
-    name: "scientific_figure_inspect_data",
+    name: "figure_inspect_data",
     label: "Inspect figure data",
     description:
-      "Inspect a tabular, Excel, pandas, or NumPy data file before creating a scientific figure. Returns shape, columns, types, missing values, ranges, sheets, and a small sample.",
+      "Inspect a tabular, Excel, pandas, or NumPy data file before creating a figure. Returns shape, columns, types, missing values, ranges, sheets, and a small sample.",
     parameters: Type.Object({
       dataPath: Type.String({ description: "Input data path, absolute or relative to the current Pi cwd" }),
     }),
@@ -521,8 +561,8 @@ export default function scientificFigureExtension(pi) {
   });
 
   pi.registerTool({
-    name: "scientific_figure_library_docs",
-    label: "Scientific plotting documentation",
+    name: "figure_library_docs",
+    label: "Figure documentation",
     description:
       "Retrieve bundled guidance and, when a topic is supplied, search the selected library's official documentation.",
     parameters: Type.Object({
@@ -552,10 +592,10 @@ export default function scientificFigureExtension(pi) {
   });
 
   pi.registerTool({
-    name: "scientific_figure_render",
-    label: "Render scientific figure",
+    name: "figure_render",
+    label: "Render figure",
     description:
-      "Execute Python plotting code, validate an academic figure, produce PNG/TIFF/PDF, and register it for the Personal Pi artifact sidebar. The code must assign the final Matplotlib Figure to fig. Reuse figureId for revisions and stop after iteration five.",
+      "Execute Python plotting code, validate a figure, produce PNG/TIFF/PDF, and register it for the Personal Pi artifact sidebar. The code must assign the final Matplotlib Figure to fig. Reuse figureId for revisions and stop after iteration five.",
     promptGuidelines: [
       "Inspect each data file before rendering.",
       "Iterate on validation errors with the same figureId, up to five versions.",
@@ -608,8 +648,7 @@ export default function scientificFigureExtension(pi) {
             },
           ],
         });
-        const { agentDirectory, settings } = effectiveSettings(ctx.cwd);
-        const configuration = settings.scientificFigure ?? {};
+        const { agentDirectory, figure: configuration } = effectiveSettings(ctx.cwd);
         const keepWorkFiles =
           params.keepWorkFiles === true || configuration.keepWorkFiles === true;
         const sessionId = ctx.sessionManager.getSessionId?.() ?? null;
@@ -654,7 +693,7 @@ export default function scientificFigureExtension(pi) {
               managed: !configuration.pythonPath,
               root: configuration.pythonPath
                 ? undefined
-                : join(agentDirectory, "environments", "scientific-figure"),
+                : join(agentDirectory, "environments", "figure"),
             },
           },
         };

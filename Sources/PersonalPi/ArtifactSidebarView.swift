@@ -60,7 +60,7 @@ struct ArtifactSidebarView: View {
             Text("No figure yet")
                 .font(Theme.sans(13, weight: .semibold))
                 .foregroundStyle(Theme.secondary)
-            Text("Figures created by the scientific plotting workflow will appear here automatically.")
+            Text("Figures created by the Figure plugin will appear here automatically.")
                 .font(Theme.sans(10.5))
                 .foregroundStyle(Theme.faint)
                 .multilineTextAlignment(.center)
@@ -366,7 +366,7 @@ private struct FigureExportSheet: View {
         let forbidden = CharacterSet(charactersIn: "/:\\")
         let cleaned = raw.components(separatedBy: forbidden).joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty ? "scientific-figure" : cleaned
+        return cleaned.isEmpty ? "figure" : cleaned
     }
 }
 

@@ -3,7 +3,10 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-runtime_root="$repo_root/Resources/ScientificFigure"
+package_root="$repo_root/Resources/PiPackages/Figure"
+runtime_root="$package_root/runtime"
+extension_path="$package_root/extensions/index.js"
+skill_path="$package_root/skills/figure/SKILL.md"
 test_root="$(mktemp -d)"
 
 cleanup() {
@@ -14,17 +17,35 @@ cleanup() {
 trap cleanup EXIT
 
 for required in \
-  "$runtime_root/extension.js" \
+  "$package_root/package.json" \
+  "$package_root/personal-pi-plugin.json" \
+  "$extension_path" \
   "$runtime_root/runner.py" \
   "$runtime_root/pyproject.toml" \
   "$runtime_root/uv.lock" \
-  "$runtime_root/skill/SKILL.md"; do
-  [[ -f "$required" ]] || { echo "Missing scientific figure resource: $required" >&2; exit 1; }
+  "$skill_path"; do
+  [[ -f "$required" ]] || { echo "Missing Figure plugin resource: $required" >&2; exit 1; }
 done
+
+python3 - "$package_root/package.json" "$package_root/personal-pi-plugin.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+package = json.loads(Path(sys.argv[1]).read_text())
+plugin = json.loads(Path(sys.argv[2]).read_text())
+assert package["name"] == "@personal-pi/figure", package
+assert package["pi"]["extensions"] == ["extensions"], package
+assert package["pi"]["skills"] == ["skills"], package
+assert plugin["id"] == "figure", plugin
+assert plugin["command"] == "figure", plugin
+assert plugin["settingsNamespace"] == "figure", plugin
+assert plugin["artifacts"][0]["kind"] == "figure", plugin
+PY
 
 uv lock --check --project "$runtime_root"
 PYTHONPYCACHEPREFIX="$test_root/pycache" python3 -m py_compile "$runtime_root/runner.py"
-node --check "$runtime_root/extension.js"
+node --check "$extension_path"
 
 data_path="$test_root/example.csv"
 artifact_root="$test_root/artifacts"
@@ -32,7 +53,7 @@ result_path="$test_root/render-result.json"
 agent_root="$test_root/pi-agent"
 managed_environment="$test_root/managed-environment"
 mkdir -p "$agent_root"
-printf '{"scientificFigure":{"keepWorkFiles":false}}\n' > "$agent_root/settings.json"
+printf '{"figure":{"keepWorkFiles":false}}\n' > "$agent_root/settings.json"
 printf 'condition,time,value\ncontrol,0,1.1\ncontrol,1,1.8\ntreated,0,1.0\ntreated,1,2.6\n' > "$data_path"
 
 inspect_result="$({
@@ -124,7 +145,7 @@ request = {
     "cwd": ".",
     "artifactRoot": sys.argv[2],
     "sessionId": "smoke-session",
-    "title": "Scientific figure smoke test",
+    "title": "Figure plugin smoke test",
     "figureId": "smoke-figure",
     "iteration": 1,
     "dataPaths": [sys.argv[1]],
@@ -163,7 +184,7 @@ with Image.open(version_dir / "figure.tiff") as image:
 assert (version_dir / "figure.pdf").read_bytes().startswith(b"%PDF")
 PY
 
-python3 - "$runtime_root" "$agent_root" <<'PY'
+python3 - "$package_root" "$agent_root" <<'PY'
 import json
 import os
 import select
@@ -179,8 +200,7 @@ environment["PERSONAL_PI_FIGURE_ENVIRONMENT"] = str(Path(sys.argv[2]).parent / "
 process = subprocess.Popen(
     [
         "pi", "--mode", "rpc", "--offline", "--no-session", "--no-approve",
-        "--extension", str(root / "extension.js"),
-        "--skill", str(root / "skill" / "SKILL.md"),
+        "--extension", str(root),
     ],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
@@ -208,13 +228,14 @@ try:
             break
     assert response and response.get("success") is True, response
     names = {item["name"] for item in response["data"]["commands"]}
-    assert "skill:scientific-figure" in names, names
-    assert "__personal_pi_scientific_figure" in names, names
+    assert "figure" in names, names
+    assert "skill:figure" in names, names
+    assert "__personal_pi_figure" in names, names
 
     runtime_result = Path(sys.argv[2]).parent / "runtime-result.json"
     command_payload = json.dumps({"responsePath": str(runtime_result)}).encode()
     import base64
-    message = "/__personal_pi_scientific_figure " + base64.b64encode(command_payload).decode()
+    message = "/__personal_pi_figure " + base64.b64encode(command_payload).decode()
     process.stdin.write(json.dumps({"type": "prompt", "id": "runtime", "message": message}) + "\n")
     process.stdin.flush()
     deadline = time.monotonic() + 60
@@ -245,4 +266,4 @@ finally:
     assert "Failed to load extension" not in diagnostics, diagnostics
 PY
 
-echo "Scientific figure workflow check passed"
+echo "Figure plugin check passed"
