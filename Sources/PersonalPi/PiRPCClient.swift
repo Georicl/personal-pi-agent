@@ -796,11 +796,8 @@ enum PiLaunchConfiguration {
         if let runtimeExtensionURL {
             arguments.append(contentsOf: ["--extension", runtimeExtensionURL.path])
         }
-        if let scientificFigureExtensionURL {
-            arguments.append(contentsOf: ["--extension", scientificFigureExtensionURL.path])
-        }
-        if let scientificFigureSkillURL {
-            arguments.append(contentsOf: ["--skill", scientificFigureSkillURL.path])
+        for plugin in bundledPlugins {
+            arguments.append(contentsOf: ["--extension", plugin.rootURL.path])
         }
         return arguments
     }
@@ -812,32 +809,16 @@ enum PiLaunchConfiguration {
         return bundled ?? (FileManager.default.fileExists(atPath: development.path) ? development : nil)
     }
 
-    static var scientificFigureResourceURL: URL? {
-        let bundled = Bundle.main.resourceURL?
-            .appendingPathComponent("ScientificFigure", isDirectory: true)
-        let development = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("Resources/ScientificFigure", isDirectory: true)
-        for candidate in [bundled, development].compactMap({ $0 }) {
-            let required = [
-                candidate.appendingPathComponent("extension.js"),
-                candidate.appendingPathComponent("runner.py"),
-                candidate.appendingPathComponent("pyproject.toml"),
-                candidate.appendingPathComponent("uv.lock"),
-                candidate.appendingPathComponent("skill/SKILL.md"),
-            ]
-            if required.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) {
-                return candidate
-            }
-        }
-        return nil
+    static var bundledPlugins: [BundledPiPlugin] {
+        PersonalPiPluginRegistry.discover()
     }
 
-    static var scientificFigureExtensionURL: URL? {
-        scientificFigureResourceURL?.appendingPathComponent("extension.js")
+    static var figurePlugin: BundledPiPlugin? {
+        bundledPlugins.first { $0.id == "figure" }
     }
 
-    static var scientificFigureSkillURL: URL? {
-        scientificFigureResourceURL?.appendingPathComponent("skill/SKILL.md")
+    static var figurePluginPackageURL: URL? {
+        figurePlugin?.rootURL
     }
 
     static func resolvedExecutable() -> String? {

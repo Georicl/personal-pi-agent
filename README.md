@@ -2,7 +2,7 @@
 
 Personal Pi 是一个以 [Pi Coding Agent](https://pi.dev/) 为运行时的原生 macOS 桌面客户端。它保留 Pi 的 Agent 循环、工具调用、会话树、上下文压缩、Skills、Extensions 与 Packages，同时提供项目切换、会话总览、任务状态、账户状态和图形化配置。
 
-当前版本定位为 **GUI 基础能力完成 + 首个学术工作流可用**：已经可以作为日常 Pi 桌面外壳，并能完成基于表格数据的出版级学术绘图；后续开发重点继续转向学术编辑、个人知识库与更多结构化产物。
+当前版本定位为 **GUI 基础能力完成 + 首个插件可用**：已经可以作为日常 Pi 桌面外壳，并能完成基于表格数据的出版级绘图；后续开发重点继续转向学术编辑、个人知识库与更多结构化产物。
 
 ## 系统要求
 
@@ -50,7 +50,7 @@ scripts/build-app.sh release
 4. 在 Settings 中选择默认模型和思考等级。
 5. 回到 Overview 或 Sessions，输入消息开始会话。
 
-需要学术绘图时，可直接描述图片目的并附上数据路径，或输入 `/skill:scientific-figure`。Pi 会检查数据、生成并最多自动修订 5 版；新图片会自动出现在全局右侧预览栏。
+需要绘图时，点击右上角 **绘图**，补充图片目的与数据路径后发送；也可以直接输入 `/figure <要求>`。Extension 会确定性启动绘图流程，不依赖 Skill 自动识别。Pi 会检查数据、生成并最多自动修订 5 版；新图片会自动出现在全局右侧预览栏。
 
 Global Chat 的工作目录为 `~/.pi/chat`。Project 模式以所选项目根目录作为 Pi 的 `cwd`，并自动加载该项目允许的 `.pi` 配置与资源。
 
@@ -67,7 +67,7 @@ Global Chat 的工作目录为 `~/.pi/chat`。Project 模式以所选项目根�
 | Diagnostics | 环境诊断 | 检查 Pi、Node、Codex、全局目录、项目配置和资源加载条件 |
 | Settings | Pi 原生配置 | Global、Project、Effective 三种视图；模型、思考、压缩、重试、消息投递、图像、工具和高级运行环境设置 |
 
-TopBar 右上角的图片按钮可在任意页面打开 Artifact Sidebar。当前第一类产物为学术图片：支持版本预览、验证结果，以及按尺寸导出 PNG、TIFF 或矢量 PDF。
+TopBar 右上角的图片按钮可在任意页面打开 Artifact Sidebar。当前第一类产物为图片：支持版本预览、验证结果，以及按尺寸导出 PNG、TIFF 或矢量 PDF。
 
 ## Project 与 Global Chat
 
@@ -127,7 +127,7 @@ Settings 提供三个作用域：
 - `shellPath`、`shellCommandPrefix`、`npmCommand`。
 - Branch summary reserve tokens、skip prompt。
 - Anthropic extra-usage warning。
-- Scientific Figure 的 Python 环境覆盖与工作文件保留策略。
+- Figure 插件的 Python 环境覆盖与工作文件保留策略。
 
 模型供应商列表来自当前 Pi `/login`，不是 GUI 自建列表。OAuth 地址由 Pi 返回后交给 macOS 打开；API Key 仅作为临时安全输入传递给 Pi，Swift GUI 不读取 `auth.json`。
 
@@ -153,7 +153,7 @@ Project 资源支持 Inherit、Enabled、Disabled 三态，不建立第二套独
 │   ├── sessions/                  # 默认会话目录
 │   ├── personal-pi-tasks.json     # GUI 任务状态
 │   ├── personal-pi-figure-artifacts.json # GUI 图片产物索引
-│   ├── environments/scientific-figure/   # uv 锁定绘图环境
+│   ├── environments/figure/              # uv 锁定绘图环境
 │   ├── skills/
 │   ├── prompts/
 │   ├── extensions/
@@ -170,7 +170,7 @@ Project 资源支持 Inherit、Enabled、Disabled 三态，不建立第二套独
     ├── extensions/
     ├── themes/
     ├── knowledge/
-    └── artifacts/figures/          # Project 学术图片
+    └── artifacts/figures/          # Project 图片
 ```
 
 - GUI 不读取或展示 API Key、OAuth Token。
@@ -202,7 +202,7 @@ scripts/check-pi-compatibility.sh
 scripts/check-session-rpc.sh
 scripts/check-package-bridge.sh
 scripts/check-starter-pack.sh
-scripts/check-scientific-figure.sh
+scripts/check-figure-plugin.sh
 scripts/build-app.sh debug
 ```
 
@@ -214,7 +214,7 @@ scripts/build-app.sh debug
 | `PERSONAL_PI_NODE_EXECUTABLE` | 指定 Node.js |
 | `PERSONAL_PI_CODEX_EXECUTABLE` | 指定 Codex CLI |
 | `PERSONAL_PI_UV_EXECUTABLE` | 指定 uv 可执行文件 |
-| `PERSONAL_PI_FIGURE_ENVIRONMENT` | 覆盖受管理的学术绘图 Python 环境 |
+| `PERSONAL_PI_FIGURE_ENVIRONMENT` | 覆盖受管理的绘图 Python 环境 |
 | `PERSONAL_PI_DATA_ROOT` | 覆盖 `~/.pi`，主要用于测试 |
 | `PERSONAL_PI_DISABLE_EXTERNAL_PROCESSES` | 禁止 Pi、Node、Codex 子进程，主要用于测试 |
 | `PI_CODING_AGENT_SESSION_DIR` | 按 Pi 原生优先级覆盖会话目录 |
@@ -225,4 +225,4 @@ scripts/build-app.sh debug
 - [Pi 兼容性记录](docs/pi-compatibility.md)
 - [Packages 与资源管理](docs/package-management.md)
 - [P4 Global Context 与核心 Skills](docs/p4-core-context-and-skills.md)
-- [Scientific Figure 学术绘图工作流](docs/scientific-figure.md)
+- [绘图插件](docs/figure-plugin.md)

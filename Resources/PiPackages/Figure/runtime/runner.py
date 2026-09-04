@@ -571,7 +571,7 @@ def render(request: dict[str, Any]) -> dict[str, Any]:
         cwd,
     )
     figure_id = sanitize_identifier(request.get("figureId"))
-    title = str(request.get("title") or "Scientific figure").strip() or "Scientific figure"
+    title = str(request.get("title") or "Figure").strip() or "Figure"
     figure_root = artifact_root / figure_id
     iteration = next_iteration(figure_root, request.get("iteration"))
     version_dir = figure_root / f"v{iteration:03d}"
@@ -605,7 +605,7 @@ def render(request: dict[str, Any]) -> dict[str, Any]:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):
-                exec(compile(code, "<personal-pi-scientific-figure>", "exec"), namespace, namespace)
+                exec(compile(code, "<personal-pi-figure>", "exec"), namespace, namespace)
             runtime_warnings.extend(str(item.message) for item in caught)
 
         fig = namespace.get("fig")
@@ -678,7 +678,7 @@ def render(request: dict[str, Any]) -> dict[str, Any]:
         )
         manifest = {
             "schemaVersion": 1,
-            "kind": "scientific-figure",
+            "kind": "figure",
             "id": version_id,
             "figureId": figure_id,
             "version": iteration,

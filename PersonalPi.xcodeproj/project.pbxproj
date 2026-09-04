@@ -32,11 +32,12 @@
 		A00000000000000000000017 /* ArtifactSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000017 /* ArtifactSidebarView.swift */; };
 		A00000000000000000000018 /* FigureArtifact.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000018 /* FigureArtifact.swift */; };
 		A00000000000000000000019 /* FigureExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000019 /* FigureExporter.swift */; };
+		A00000000000000000000020 /* PersonalPiPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000020 /* PersonalPiPlugin.swift */; };
 		B00000000000000000000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = V00000000000000000000001 /* Localizable.strings */; };
 		B00000000000000000000002 /* pi-auth-bridge.mjs in Resources */ = {isa = PBXBuildFile; fileRef = R00000000000000000000004 /* pi-auth-bridge.mjs */; };
 		B00000000000000000000003 /* pi-package-bridge.mjs in Resources */ = {isa = PBXBuildFile; fileRef = R00000000000000000000005 /* pi-package-bridge.mjs */; };
 		B00000000000000000000004 /* personal-pi-runtime-extension.js in Resources */ = {isa = PBXBuildFile; fileRef = R00000000000000000000006 /* personal-pi-runtime-extension.js */; };
-		B00000000000000000000005 /* ScientificFigure in Resources */ = {isa = PBXBuildFile; fileRef = R00000000000000000000007 /* ScientificFigure */; };
+		B00000000000000000000005 /* PiPackages in Resources */ = {isa = PBXBuildFile; fileRef = R00000000000000000000007 /* PiPackages */; };
 		C00000000000000000000001 /* SettingsFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000001 /* SettingsFileTests.swift */; };
 		C00000000000000000000002 /* WorkspaceAndLanguageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000002 /* WorkspaceAndLanguageTests.swift */; };
 		C00000000000000000000003 /* TaskStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000003 /* TaskStoreTests.swift */; };
@@ -93,13 +94,14 @@
 		S00000000000000000000017 /* ArtifactSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactSidebarView.swift; sourceTree = "<group>"; };
 		S00000000000000000000018 /* FigureArtifact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FigureArtifact.swift; sourceTree = "<group>"; };
 		S00000000000000000000019 /* FigureExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FigureExporter.swift; sourceTree = "<group>"; };
+		S00000000000000000000020 /* PersonalPiPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalPiPlugin.swift; sourceTree = "<group>"; };
 		R00000000000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		R00000000000000000000002 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		R00000000000000000000003 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		R00000000000000000000004 /* pi-auth-bridge.mjs */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "pi-auth-bridge.mjs"; sourceTree = "<group>"; };
 		R00000000000000000000005 /* pi-package-bridge.mjs */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "pi-package-bridge.mjs"; sourceTree = "<group>"; };
 		R00000000000000000000006 /* personal-pi-runtime-extension.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "personal-pi-runtime-extension.js"; sourceTree = "<group>"; };
-		R00000000000000000000007 /* ScientificFigure */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ScientificFigure; sourceTree = "<group>"; };
+		R00000000000000000000007 /* PiPackages */ = {isa = PBXFileReference; lastKnownFileType = folder; path = PiPackages; sourceTree = "<group>"; };
 		T00000000000000000000001 /* SettingsFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFileTests.swift; sourceTree = "<group>"; };
 		T00000000000000000000002 /* WorkspaceAndLanguageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceAndLanguageTests.swift; sourceTree = "<group>"; };
 		T00000000000000000000003 /* TaskStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStoreTests.swift; sourceTree = "<group>"; };
@@ -155,6 +157,7 @@
 				S00000000000000000000016 /* SessionUtilityView.swift */,
 				S00000000000000000000018 /* FigureArtifact.swift */,
 				S00000000000000000000019 /* FigureExporter.swift */,
+				S00000000000000000000020 /* PersonalPiPlugin.swift */,
 				S0000000000000000000000C /* SettingsView.swift */,
 				S0000000000000000000000D /* SlashCommandInput.swift */,
 				S0000000000000000000000E /* TaskStore.swift */,
@@ -173,7 +176,7 @@
 				R00000000000000000000004 /* pi-auth-bridge.mjs */,
 				R00000000000000000000005 /* pi-package-bridge.mjs */,
 				R00000000000000000000006 /* personal-pi-runtime-extension.js */,
-				R00000000000000000000007 /* ScientificFigure */,
+				R00000000000000000000007 /* PiPackages */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -298,7 +301,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		F40000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000001 /* Localizable.strings in Resources */, B00000000000000000000002 /* pi-auth-bridge.mjs in Resources */, B00000000000000000000003 /* pi-package-bridge.mjs in Resources */, B00000000000000000000004 /* personal-pi-runtime-extension.js in Resources */, B00000000000000000000005 /* ScientificFigure in Resources */); runOnlyForDeploymentPostprocessing = 0; };
+		F40000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B00000000000000000000001 /* Localizable.strings in Resources */, B00000000000000000000002 /* pi-auth-bridge.mjs in Resources */, B00000000000000000000003 /* pi-package-bridge.mjs in Resources */, B00000000000000000000004 /* personal-pi-runtime-extension.js in Resources */, B00000000000000000000005 /* PiPackages in Resources */); runOnlyForDeploymentPostprocessing = 0; };
 		F40000000000000000000002 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		F40000000000000000000003 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
@@ -327,6 +330,7 @@
 				A00000000000000000000016 /* SessionUtilityView.swift in Sources */,
 				A00000000000000000000018 /* FigureArtifact.swift in Sources */,
 				A00000000000000000000019 /* FigureExporter.swift in Sources */,
+				A00000000000000000000020 /* PersonalPiPlugin.swift in Sources */,
 				A0000000000000000000000C /* SettingsView.swift in Sources */,
 				A0000000000000000000000D /* SlashCommandInput.swift in Sources */,
 				A0000000000000000000000E /* TaskStore.swift in Sources */,

@@ -76,6 +76,21 @@ final class PersonalPiUITests: XCTestCase {
     }
 
     @MainActor
+    func testFigurePluginButtonPreparesExplicitCommand() {
+        let app = launchApp(language: "zh-Hans")
+
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        let figureButton = app.buttons["figure-plugin-button"]
+        XCTAssertTrue(figureButton.waitForExistence(timeout: 4))
+        XCTAssertEqual(figureButton.label, "绘图")
+        figureButton.click()
+
+        let composer = app.textFields["composer-input"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 4))
+        XCTAssertEqual(composer.value as? String, "/figure ")
+    }
+
+    @MainActor
     func testPackagesAndResourcesPageUsesPiSnapshot() {
         let app = launchApp(language: "zh-Hans")
 
@@ -229,7 +244,7 @@ final class PersonalPiUITests: XCTestCase {
 
         let manifest: [String: Any] = [
             "schemaVersion": 1,
-            "kind": "scientific-figure",
+            "kind": "figure",
             "id": "ui-test-v001",
             "figureId": "ui-test",
             "version": 1,

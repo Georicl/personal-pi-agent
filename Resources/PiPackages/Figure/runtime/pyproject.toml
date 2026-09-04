@@ -1,7 +1,7 @@
 [project]
-name = "personal-pi-scientific-figure-runtime"
+name = "personal-pi-figure-runtime"
 version = "0.1.0"
-description = "Reproducible scientific figure runtime for Personal Pi"
+description = "Reproducible figure runtime for Personal Pi"
 requires-python = ">=3.11,<3.15"
 dependencies = [
   "lifelines>=0.30",

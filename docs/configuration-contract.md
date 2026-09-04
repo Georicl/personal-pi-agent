@@ -13,7 +13,7 @@ This contract separates Pi-owned runtime state, Personal Pi data, and project-ow
 │   ├── trust.json                 # Saved project trust decisions
 │   ├── sessions/                  # Default Pi JSONL sessions
 │   ├── personal-pi-figure-artifacts.json # Personal Pi artifact index
-│   ├── environments/scientific-figure/   # Personal Pi managed uv environment
+│   ├── environments/figure/              # Personal Pi managed uv environment
 │   ├── AGENTS.md                  # Optional global working instructions
 │   ├── SYSTEM.md                  # Optional system-prompt replacement
 │   ├── APPEND_SYSTEM.md           # Optional system-prompt addition
@@ -56,7 +56,7 @@ Rules:
     ├── extensions/                # Project-only tools and integrations
     ├── themes/                    # Optional themes
     ├── knowledge/                 # Project knowledge sources
-    ├── artifacts/figures/         # Scientific Figure image outputs
+    ├── artifacts/figures/         # Figure plugin image outputs
     └── npm/                       # Pi-managed package dependencies
 ```
 
@@ -80,11 +80,11 @@ Rules:
 | Reusable prompt expansion | Prompt templates |
 | New tools, lifecycle hooks, external integrations | Extensions |
 | Long-term structured knowledge and retrieval indexes | Future Personal Pi knowledge layer |
-| Scientific plotting policy | Bundled `scientific-figure` Skill |
-| Data inspection, rendering and validation | Bundled Scientific Figure Extension and locked Python runner |
+| Figure selection and revision guidance | Bundled `figure` Skill inside the Figure Pi Package |
+| Data inspection, rendering and validation | Bundled Figure Extension and locked Python runner |
 | Figure preview index and export presentation | Swift GUI |
 
-The GUI-owned `scientificFigure` object in Global or Project `settings.json` is intentionally separate from Pi's native keys. The bundled Extension reads `pythonPath` and `keepWorkFiles`; unknown sibling keys remain preserved by the GUI's atomic settings update.
+The GUI-owned `figure` object in Global or Project `settings.json` is intentionally separate from Pi's native keys. The bundled Extension reads `pythonPath` and `keepWorkFiles`; unknown sibling keys remain preserved by the GUI's atomic settings update. The legacy `scientificFigure` keys remain readable and migrate to `figure` the next time Settings saves those fields.
 
 ## Loading policy
 

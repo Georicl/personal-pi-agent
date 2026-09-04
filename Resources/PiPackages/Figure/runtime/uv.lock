@@ -705,7 +705,7 @@ wheels = [
 ]
 
 [[package]]
-name = "personal-pi-scientific-figure-runtime"
+name = "personal-pi-figure-runtime"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

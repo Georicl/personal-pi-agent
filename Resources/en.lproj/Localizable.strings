@@ -227,12 +227,14 @@
 "Pi package bridge is missing from this app" = "Pi package bridge is missing from this app";
 "Pi returned an invalid package response" = "Pi returned an invalid package response";
 
-/* Scientific figures */
+/* Figure plugin */
+"Figure" = "Figure";
+"Start a figure request" = "Start a figure request";
 "Figure preview" = "Figure preview";
 "Open figure preview" = "Open figure preview";
 "Close figure preview" = "Close figure preview";
 "No figure yet" = "No figure yet";
-"Figures created by the scientific plotting workflow will appear here automatically." = "Figures created by the scientific plotting workflow will appear here automatically.";
+"Figures created by the Figure plugin will appear here automatically." = "Figures created by the Figure plugin will appear here automatically.";
 "Preview file is unavailable" = "Preview file is unavailable";
 "Loading preview…" = "Loading preview…";
 "Version" = "Version";
@@ -254,14 +256,14 @@
 "Choose destination…" = "Choose destination…";
 "Export" = "Export";
 "Figure exported" = "Figure exported";
-"Scientific figures" = "Scientific figures";
+"Figures" = "Figures";
 "Python executable override" = "Python executable override";
 "Inherit managed uv environment" = "Inherit managed uv environment";
 "Managed uv environment" = "Managed uv environment";
 "Keep figure work files" = "Keep figure work files";
 "By default Personal Pi keeps only PNG, TIFF and PDF outputs. Source code, requests, validation JSON and logs are retained only when explicitly enabled." = "By default Personal Pi keeps only PNG, TIFF and PDF outputs. Source code, requests, validation JSON and logs are retained only when explicitly enabled.";
-"Scientific figure runtime" = "Scientific figure runtime";
-"Scientific figures, network, provider, session, shell and branch-summary settings." = "Scientific figures, network, provider, session, shell and branch-summary settings.";
+"Figure plugin" = "Figure plugin";
+"Figures, network, provider, session, shell and branch-summary settings." = "Figures, network, provider, session, shell and branch-summary settings.";
 "Width must be greater than 0 and no more than 210 mm." = "Width must be greater than 0 and no more than 210 mm.";
 "Height must be greater than 0 and no more than 148.5 mm." = "Height must be greater than 0 and no more than 148.5 mm.";
 "Raster DPI must be between 72 and 1200." = "Raster DPI must be between 72 and 1200.";

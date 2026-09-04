@@ -1,12 +1,12 @@
 ---
-name: scientific-figure
-description: Create, inspect, validate, iteratively revise, preview, and export publication-quality scientific figures from tabular, Excel, NumPy, or pandas data. Use for biological and general academic plotting requests.
-compatibility: Requires Personal Pi scientific figure extension, uv, and Python 3.11-3.14.
+name: figure
+description: Create, inspect, validate, iteratively revise, preview, and export publication-quality figures from tabular, Excel, NumPy, or pandas data. Use whenever the user asks to create or revise a chart, plot, visualization, or figure.
+compatibility: Requires the Personal Pi Figure extension, uv, and Python 3.11-3.14.
 ---
 
-# Scientific Figure
+# Figure
 
-Use this workflow whenever the user asks to create or revise an academic figure.
+Use this workflow whenever the user asks to create or revise a figure. The explicit `/figure` command activates the same workflow without relying on automatic Skill selection.
 
 ## Non-negotiable rules
 
@@ -22,15 +22,15 @@ Use this workflow whenever the user asks to create or revise an academic figure.
 ## Required workflow
 
 1. Identify every input file and the requested scientific message.
-2. Call scientific_figure_inspect_data for each data source before plotting.
+2. Call figure_inspect_data for each data source before plotting.
 3. Choose a general plot grammar based on variables and intended comparison. Read references/library-routing.md and references/plot-recipes.md when needed.
 4. If significance markers, survival comparisons, fitted models, confidence intervals derived from a model, correlations with p-values, or any inferential statistic is requested:
    - state the candidate method, assumptions, groups, sample unit, correction, and expected annotation;
    - wait for explicit user confirmation;
    - pass statisticalAnalysis with the confirmed method to the render tool.
-5. Call scientific_figure_render with a complete Python body that assigns the final Matplotlib Figure to a variable named fig.
+5. Call figure_render with a complete Python body that assigns the final Matplotlib Figure to a variable named fig.
 6. Read every validation error and warning. When the current model supports images, inspect the returned preview as well.
-7. Revise the plotting code and call scientific_figure_render again with the same figureId and the next iteration.
+7. Revise the plotting code and call figure_render again with the same figureId and the next iteration.
 8. Stop when deterministic validation passes and no visible defect remains, or after iteration five.
 9. Report the final figure and formats. Do not expose temporary scripts or logs unless requested.
 
@@ -68,7 +68,7 @@ ax.set_ylabel("Y measurement")
 
 ## Documentation lookup
 
-Call scientific_figure_library_docs when an API or format is uncertain. Prefer official library documentation and record the library/topic used in the reasoning. Do not invent unsupported parameters.
+Call figure_library_docs when an API or format is uncertain. Prefer official library documentation and record the library/topic used in the reasoning. Do not invent unsupported parameters.
 
 ## References
 

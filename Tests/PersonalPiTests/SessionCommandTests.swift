@@ -62,14 +62,20 @@ struct SessionCommandTests {
         #expect(arguments[flagIndex + 1] == extensionURL.path)
     }
 
-    @Test("Pi launches with the scientific figure extension and skill")
-    func includesScientificFigureResources() throws {
-        let extensionURL = try #require(PiLaunchConfiguration.scientificFigureExtensionURL)
-        let skillURL = try #require(PiLaunchConfiguration.scientificFigureSkillURL)
+    @Test("Pi launches the bundled Figure package from its plugin manifest")
+    func includesFigurePluginPackage() throws {
+        let plugin = try #require(PiLaunchConfiguration.figurePlugin)
         let arguments = PiLaunchConfiguration.arguments(projectTrusted: true)
 
-        #expect(arguments.containsSubsequence(["--extension", extensionURL.path]))
-        #expect(arguments.containsSubsequence(["--skill", skillURL.path]))
+        #expect(plugin.manifest.id == "figure")
+        #expect(plugin.manifest.command == "figure")
+        #expect(plugin.manifest.settingsNamespace == "figure")
+        #expect(plugin.manifest.artifacts.contains { $0.kind == "figure" && $0.renderer == "figure" })
+        #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("package.json").path))
+        #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("extensions/index.js").path))
+        #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("skills/figure/SKILL.md").path))
+        #expect(FileManager.default.fileExists(atPath: plugin.rootURL.appendingPathComponent("runtime/runner.py").path))
+        #expect(arguments.containsSubsequence(["--extension", plugin.rootURL.path]))
     }
 }
 

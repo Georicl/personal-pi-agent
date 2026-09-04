@@ -64,8 +64,8 @@ struct SettingsView: View {
     @State private var branchSummaryReserveTokens = ""
     @State private var branchSummarySkipPrompt = PiOptionalSetting.inherited
     @State private var anthropicExtraUsageWarning = PiOptionalSetting.inherited
-    @State private var scientificFigurePythonPath = ""
-    @State private var scientificFigureKeepWorkFiles = PiOptionalSetting.inherited
+    @State private var figurePythonPath = ""
+    @State private var figureKeepWorkFiles = PiOptionalSetting.inherited
     @State private var overridesTools = false
     @State private var selectedTools = Set<String>()
     @State private var status = ""
@@ -558,20 +558,20 @@ struct SettingsView: View {
     private var advancedRuntimeCard: some View {
         SettingsCard(
             title: "Advanced runtime",
-            subtitle: "Scientific figures, network, provider, session, shell and branch-summary settings."
+            subtitle: "Figures, network, provider, session, shell and branch-summary settings."
         ) {
             DisclosureGroup("Show advanced options", isExpanded: $showingAdvancedRuntime) {
                 VStack(alignment: .leading, spacing: 16) {
-                    advancedSection("Scientific figures") {
+                    advancedSection("Figures") {
                         SettingsTextRow(
                             title: "Python executable override",
                             placeholder: selectedScope == .project ? "Inherit managed uv environment" : "Managed uv environment",
-                            text: $scientificFigurePythonPath
+                            text: $figurePythonPath
                         )
                         .disabled(isReadOnly)
                         optionalSettingRow(
                             title: "Keep figure work files",
-                            selection: $scientificFigureKeepWorkFiles
+                            selection: $figureKeepWorkFiles
                         )
                         Text("By default Personal Pi keeps only PNG, TIFF and PDF outputs. Source code, requests, validation JSON and logs are retained only when explicitly enabled.")
                             .font(Theme.sans(9.5))
@@ -839,14 +839,8 @@ struct SettingsView: View {
         branchSummaryReserveTokens = numberString(PiSettingsFile.value(in: document, path: ["branchSummary", "reserveTokens"]))
         branchSummarySkipPrompt = optionalMode(PiSettingsFile.value(in: document, path: ["branchSummary", "skipPrompt"]))
         anthropicExtraUsageWarning = optionalMode(PiSettingsFile.value(in: document, path: ["warnings", "anthropicExtraUsage"]))
-        scientificFigurePythonPath = PiSettingsFile.value(
-            in: document,
-            path: ["scientificFigure", "pythonPath"]
-        ) as? String ?? ""
-        scientificFigureKeepWorkFiles = optionalMode(PiSettingsFile.value(
-            in: document,
-            path: ["scientificFigure", "keepWorkFiles"]
-        ))
+        figurePythonPath = figureSettingValue("pythonPath", in: document) as? String ?? ""
+        figureKeepWorkFiles = optionalMode(figureSettingValue("keepWorkFiles", in: document))
         if let tools = document["defaultTools"] as? [String] {
             overridesTools = true
             selectedTools = Set(tools)
@@ -855,6 +849,17 @@ struct SettingsView: View {
             selectedTools = []
         }
         ensureThinkingModelSelection()
+    }
+
+    private func figureSettingValue(_ key: String, in document: [String: Any]) -> Any? {
+        guard selectedScope == .effective else {
+            return PiSettingsFile.figureValue(in: document, key: key)
+        }
+        return PiSettingsFile.effectiveFigureValue(
+            global: globalDocument,
+            project: projectDocument,
+            key: key
+        )
     }
 
     private func save() {
@@ -931,18 +936,20 @@ struct SettingsView: View {
         PiSettingsFile.setOptionalInt(branchSummaryReserveTokens, path: ["branchSummary", "reserveTokens"], in: &document)
         PiSettingsFile.setOptionalBool(branchSummarySkipPrompt, path: ["branchSummary", "skipPrompt"], in: &document)
         PiSettingsFile.setOptionalBool(anthropicExtraUsageWarning, path: ["warnings", "anthropicExtraUsage"], in: &document)
-        let figurePythonPath = scientificFigurePythonPath
+        let normalizedFigurePythonPath = figurePythonPath
             .trimmingCharacters(in: .whitespacesAndNewlines)
         PiSettingsFile.setValue(
-            figurePythonPath.isEmpty ? nil : figurePythonPath,
-            path: ["scientificFigure", "pythonPath"],
+            normalizedFigurePythonPath.isEmpty ? nil : normalizedFigurePythonPath,
+            path: ["figure", "pythonPath"],
             in: &document
         )
         PiSettingsFile.setOptionalBool(
-            scientificFigureKeepWorkFiles,
-            path: ["scientificFigure", "keepWorkFiles"],
+            figureKeepWorkFiles,
+            path: ["figure", "keepWorkFiles"],
             in: &document
         )
+        PiSettingsFile.setValue(nil, path: ["scientificFigure", "pythonPath"], in: &document)
+        PiSettingsFile.setValue(nil, path: ["scientificFigure", "keepWorkFiles"], in: &document)
         if overridesTools { document["defaultTools"] = builtInTools.filter(selectedTools.contains) }
         else { document.removeValue(forKey: "defaultTools") }
         do {
@@ -1158,6 +1165,19 @@ enum PiSettingsFile {
         if path.count == 1 { return object[first] }
         guard let nested = object[first] as? [String: Any] else { return nil }
         return value(in: nested, path: Array(path.dropFirst()))
+    }
+
+    static func figureValue(in object: [String: Any], key: String) -> Any? {
+        value(in: object, path: ["figure", key])
+            ?? value(in: object, path: ["scientificFigure", key])
+    }
+
+    static func effectiveFigureValue(
+        global: [String: Any],
+        project: [String: Any],
+        key: String
+    ) -> Any? {
+        figureValue(in: project, key: key) ?? figureValue(in: global, key: key)
     }
 
     static func setString(_ raw: String, key: String, in object: inout [String: Any]) {

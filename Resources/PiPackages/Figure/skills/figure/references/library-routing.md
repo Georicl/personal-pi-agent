@@ -23,4 +23,4 @@ Only load pandas pickle files from a source the user trusts, because Python pick
 
 Do not introduce AnnData or Scanpy in the first version of this workflow.
 
-Use scientific_figure_library_docs for current API details. The tool restricts network lookup to the official documentation origins listed above.
+Use figure_library_docs for current API details. The tool restricts network lookup to the official documentation origins listed above.
