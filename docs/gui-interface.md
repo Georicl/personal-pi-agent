@@ -107,7 +107,9 @@ View 通过以下只读派生值获取当前作用域，不自行拼接路径：
 - addExistingWorkspace()
 - refreshWorkspace()
 
-切换作用域会清理当前消息状态并重启 Pi RPC。任何未来的作用域相关状态都必须在 restartPiForScope() 中明确决定是清理、保留还是重新加载。
+切换作用域会清理当前消息状态并重启 Pi RPC。连接期间的待发送文本绑定原 cwd；用户切换项目会撤销待发送/新建/恢复请求，文本仅作为原项目的内存草稿保留，不会自动发到新项目。任何未来的作用域相关状态都必须在 restartPiForScope() 中明确决定是清理、保留还是重新加载。
+
+`switchSession(_:)` 是另一条路径：Pi 成功恢复会话后，GUI 采用会话的精确 cwd，同步 Project、知识库、产物和配置命令；不重启已经切换的 Pi。嵌套目录不会被映射到父项目的 `.pi`，Global Chat 仅匹配其规范化目录。切换期间不投递消息；`sessionRevision` 隔离同一连接上旧会话的异步读取结果，`PiSessionChangeResult` 区分 changed/cancelled/failed，取消不修改原会话和作用域。
 
 ## 4. AppState 状态契约
 
@@ -116,11 +118,12 @@ AppState 标记为 @MainActor。View 可以订阅 Published 状态并调用 acti
 ### 4.1 对话与运行状态
 
 PiRunLifecycle 区分 idle/running/waiting。`turn_end`、`agent_end`、`extension_error`
-不是整个任务完成；只有 `agent_settled`、明确中止或断开连接才结束运行。
+不是整个模型任务完成；只有 `agent_settled`、明确中止或断开连接才结束模型运行。
+转发斜杠命令不预先创建聊天任务：收到真实 `agent_start` 后才升级为模型任务。纯命令成功返回后，通过 `get_state` 的 `isStreaming`、`isCompacting` 和 `pendingMessageCount` 验证空闲；命令排队的模型工作仍等 `agent_settled`。新模型事件使旧完成检查失效。`notify` 只记录非阻塞活动，confirm/select/input/editor 才进入交互等待。取消保存为 Cancelled 详情，不被随后到达的 settled 事件覆盖。尚未完成的请求不接受第二条转发请求，输入保留在编辑框。
 PiRPCClient 的可变连接状态与回调在 MainActor 串行处理，阻塞写入在独立队列。每次连接有独立 generation，
 旧进程的数据、退出事件和定时器不得更新新连接。断开会清空缓冲区并取消、完成所有
 pending 请求。普通请求默认 30 秒，启动 5 秒，压缩/内部扩展命令 600 秒。
-Pi 0.84.x 的 new_session 空闲超时回退只允许当前连接触发，取消不触发重启。
+Pi 0.84.x 的 new_session 空闲超时回退只允许当前连接、已确认空闲且没有交互请求时触发；交互 hook 未完成时保留原响应等待，取消不触发重启。
 包管理切换项目会清空旧上下文的 busy、快照和未保存路径编辑，并忽略旧回调。
 
 | 状态 | 用途 |
@@ -368,6 +371,8 @@ UI 测试支持：
    Knowledge Pi Package 还必须运行 `scripts/check-knowledge-plugin.sh`，检查真实 Pi RPC 中的命令、Skill、Extension 和运行时调用。
 5. Manual GUI smoke：检查 Finder 启动、真实作用域切换、会话恢复和视觉布局。
 
+`WorkflowBoundaryTests` 通过真实 Swift AppState + RPC 管道及确定性 peer 验证跨项目恢复、延迟回调、待发送文本隔离、通知、纯命令、模型排队和取消。`PERSONAL_PI_TEST_NATIVE_RPC=1 swift test --filter WorkflowBoundaryTests` 额外使用已安装 Pi 和隔离数据目录，验证真实 cwd、原生取消 hook 和 `/notify` 类命令，不使用模型凭据。Figure 导出回归检查实际着色区域的边界和比例，覆盖 PNG/TIFF/PDF、72/150/300/600 DPI、放大/缩小、非零 PDF 原点及四种页面旋转；不能只以文件存在或像素大小验收。
+
 ### 11.1 Knowledge GUI
 
 `AppState.knowledgeStore` 持有 `KnowledgeLibraryStore`，`KnowledgeView` 与 `SidebarKnowledgeSummary` 观察同一份状态。Project 切换调用 `configure(projectRoot:)`，立即清空旧内容并更新请求代号；旧请求的延迟响应不能更新新项目。文件列表、搜索与详情各有独立请求代号，避免重复刷新和点击导致结果错位。
@@ -375,6 +380,8 @@ UI 测试支持：
 `KnowledgeCoreClient` 使用 JSON stdin/stdout 调用内置 `Knowledge/runtime/knowledge_core.py`。Python 环境位于动态 Pi 根目录下的 `agent/environments/knowledge`，由锁文件同步；运行、解析和文件统计在后台执行，单次子进程有 120 秒超时。页面数据通过有类型的 Swift 模型解码，业务 UI 不读取 SQLite。
 
 侧边栏仅用 `KnowledgeDirectorySummary` 读取文件数和字节总量，不启动 Python。页面支持 Global/当前 Project 切换、所有文件/分类筛选、文件名过滤、已索引内容搜索、文本详情、Finder 打开、文件导入、增量索引、重建，以及用户点击后发布已审阅草稿。`knowledge_capture`、`knowledge_publish`、`knowledge_index` 完成后刷新知识库。容量统计包含未分类文件和附件，不包含隐藏文件和符号链接；错误和未索引状态必须明确显示。
+
+发布必须绑定预览版本：详情未读完或没有 `document.contentHash` 时不可发布。点击后，GUI 捕获已显示文档 ID/hash，发送 `expectedContentHash` 与 `userConfirmed: true`。后端同时校验索引 hash 和当前文件字节 hash；正文变更、重新索引为另一版本都要求重新预览确认，不能自动换成新 hash。
 
 测试入口：`KnowledgeLibraryTests` 覆盖解码、时间、容量、延迟响应隔离；设置 `PERSONAL_PI_TEST_KNOWLEDGE_RUNTIME=1` 可运行真实 Swift/Python 导入到检索流程。XCUITest 使用 `PERSONAL_PI_UI_TESTING` 下的临时 JSON fixture，不访问真实用户知识库；知识页面测试覆盖中文文案、分类筛选和 Project/Global 切换。
 

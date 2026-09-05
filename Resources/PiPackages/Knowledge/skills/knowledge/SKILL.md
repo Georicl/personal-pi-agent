@@ -28,7 +28,7 @@ Every draft should identify its type, confidence, tags, and sources. Use a `sour
 
 ## Review and publication
 
-Check the draft against its sources, correct unsupported claims, and surface uncertainty. Call `knowledge_publish` only after the user explicitly confirms that the draft should become a reviewed card. Never represent a draft, inbox item, or model inference as reviewed knowledge.
+Check the draft against its sources, correct unsupported claims, and surface uncertainty. Preview it with `knowledge_get` and retain that response's `document.contentHash`. Call `knowledge_publish` only after the user explicitly confirms that exact draft version, passing its hash as `expectedContentHash`. If the file or index changed, reindex, preview, and obtain confirmation again; never silently replace the confirmed hash. Never represent a draft, inbox item, or model inference as reviewed knowledge.
 
 ## Maintenance
 

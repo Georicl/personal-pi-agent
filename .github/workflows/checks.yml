@@ -42,6 +42,8 @@ jobs:
           version: '0.12.0'
       - name: Install pinned Pi test runtime
         run: npm install --global --ignore-scripts @earendil-works/pi-coding-agent@0.84.3
+      - name: Native GUI and RPC workflow boundaries
+        run: PERSONAL_PI_TEST_NATIVE_RPC=1 swift test --filter WorkflowBoundaryTests
       - name: Knowledge package and core
         run: bash scripts/check-knowledge-plugin.sh
       - name: Figure package

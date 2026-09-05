@@ -129,6 +129,37 @@ struct KnowledgeLibraryTests {
         #expect(document.chunks.first?.text.contains("preserves provenance") == true)
     }
 
+    @Test("Publish uses the displayed document version and is unavailable before preview loads")
+    @MainActor
+    func publishPreviewVersion() async throws {
+        let pending = PendingKnowledgeRequests()
+        let store = KnowledgeLibraryStore(piRoot: URL(fileURLWithPath: "/tmp/test-pi"), executor: pending.execute)
+        store.configure(projectRoot: nil)
+        store.reload()
+        let draftInventory = String(decoding: inventoryFixture(root: "/tmp/test-pi", count: 1), as: UTF8.self)
+            .replacingOccurrences(of: "sources", with: "drafts")
+            .replacingOccurrences(of: "\"active\"", with: "\"draft\"")
+            .replacingOccurrences(of: "\"stale\":true", with: "\"stale\":false")
+        pending.finish(0, data: Data(draftInventory.utf8))
+        await settle()
+        store.selectFile("drafts/evidence.md")
+        #expect(!store.canPublish)
+        let preview = Data(#"{"success":true,"document":{"id":"paper-1","relativePath":"drafts/evidence.md","category":"drafts","title":"Evidence","status":"draft","contentHash":"confirmed-version"},"chunks":[]}"#.utf8)
+        pending.finish(1, data: preview)
+        await settle()
+        #expect(store.canPublish)
+        store.publishSelectedCard()
+        let request = pending.request(2)
+        #expect(request.action == "publish")
+        #expect(request.documentId == "paper-1")
+        #expect(request.expectedContentHash == "confirmed-version")
+        #expect(request.userConfirmed == true)
+        #expect(!store.canPublish)
+        pending.fail(2)
+        await settle()
+        #expect(!store.error.isEmpty)
+    }
+
     private func inventoryFixture(root: String, count: Int) -> Data {
         Data("""
         {"success":true,"scope":{"id":"global","kind":"global","knowledgeRoot":"\(root)/knowledge","projectRoot":null,"indexPath":"\(root)/index.sqlite"},"initialized":true,"fileCount":\(count),"totalBytes":2048,"categories":{"sources":{"files":1,"bytes":2048}},"files":[{"relativePath":"sources/evidence.md","category":"sources","name":"evidence.md","extension":".md","sizeBytes":2048,"modifiedAt":"2026-09-05T02:03:04.123456Z","supported":true,"index":{"documentId":"paper-1","title":"Evidence","status":"active","chunks":1,"error":null,"stale":true}}],"truncated":false,"latestRun":{"id":"run-1","action":"index","finished_at":"2026-09-05T01:02:03.123456Z"}}
@@ -143,12 +174,19 @@ struct KnowledgeLibraryTests {
 private final class PendingKnowledgeRequests: @unchecked Sendable {
     private let lock = NSLock()
     private var callbacks: [@Sendable (Result<Data, Error>) -> Void] = []
+    private var requests: [KnowledgeCoreRequest] = []
     func execute(_ request: KnowledgeCoreRequest, _ root: URL, _ cwd: URL, _ completion: @escaping @Sendable (Result<Data, Error>) -> Void) {
         lock.lock()
         callbacks.append(completion)
+        requests.append(request)
         lock.unlock()
     }
     func finish(_ index: Int, data: Data) { callback(index)(.success(data)) }
+    func request(_ index: Int) -> KnowledgeCoreRequest {
+        lock.lock()
+        defer { lock.unlock() }
+        return requests[index]
+    }
     func fail(_ index: Int) { callback(index)(.failure(KnowledgeCoreClientError.operationFailed("old request failed"))) }
     private func callback(_ index: Int) -> @Sendable (Result<Data, Error>) -> Void {
         lock.lock()

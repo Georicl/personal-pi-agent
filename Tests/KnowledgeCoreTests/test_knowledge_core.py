@@ -279,11 +279,48 @@ class KnowledgeCoreTests(unittest.TestCase):
         draft = Path(captured["path"])
         text = draft.read_text().replace("status: draft", "status: deprecated")
         draft.write_text(text)
-        with self.assertRaisesRegex(core.KnowledgeCoreError, "changed since indexing"):
+        with self.assertRaisesRegex(core.KnowledgeCoreError, "changed since preview"):
+            core.publish_card(self.project_scope, {
+                "documentId": captured["document"]["id"], "userConfirmed": True,
+                "expectedContentHash": captured["document"]["contentHash"],
+            })
+        self.assertEqual(draft.read_text(), text)
+
+    def test_publish_requires_the_exact_previewed_body_even_after_reindexing(self) -> None:
+        for reindex in (False, True):
+            with self.subTest(reindex=reindex):
+                captured = core.capture_record(self.project_scope, {
+                    "category": "drafts", "title": f"Version {reindex}",
+                    "content": "User reviewed this original body", "sources": []
+                })
+                document = captured["document"]
+                request = {"documentId": document["id"], "userConfirmed": True,
+                           "expectedContentHash": document["contentHash"]}
+                draft = Path(captured["path"])
+                changed = draft.read_text().replace("original body", "UNREVIEWED body")
+                draft.write_text(changed)
+                if reindex:
+                    core.index_scope(self.project_scope)
+                with self.assertRaisesRegex(core.KnowledgeCoreError, "changed since preview"):
+                    core.publish_card(self.project_scope, request)
+                self.assertEqual(draft.read_text(), changed)
+                self.assertFalse((self.project_scope.knowledge_root / "cards" / draft.name).exists())
+                # A fresh preview and confirmation can publish the new version.
+                core.index_scope(self.project_scope)
+                preview = core.get_document(self.project_scope, document["id"])
+                request["expectedContentHash"] = preview["document"]["contentHash"]
+                published = core.publish_card(self.project_scope, request)
+                self.assertIn("UNREVIEWED body", Path(published["path"]).read_text())
+
+    def test_publish_rejects_missing_hash_and_preserves_the_draft(self) -> None:
+        captured = core.capture_record(self.project_scope, {
+            "category": "drafts", "title": "Unversioned", "content": "Needs review", "sources": []
+        })
+        with self.assertRaisesRegex(core.KnowledgeCoreError, "expectedContentHash"):
             core.publish_card(self.project_scope, {
                 "documentId": captured["document"]["id"], "userConfirmed": True,
             })
-        self.assertEqual(draft.read_text(), text)
+        self.assertTrue(Path(captured["path"]).exists())
 
     def test_rebuild_keeps_existing_database_readers_connected(self) -> None:
         core.initialize_scope(self.global_scope)
@@ -609,7 +646,8 @@ Stable identity survives a file move.
             )
         published = core.publish_card(
             self.project_scope,
-            {"documentId": document_id, "userConfirmed": True},
+            {"documentId": document_id, "userConfirmed": True,
+             "expectedContentHash": captured["document"]["contentHash"]},
         )
 
         self.assertEqual(published["document"]["id"], document_id)

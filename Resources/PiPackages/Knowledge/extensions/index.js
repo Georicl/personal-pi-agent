@@ -522,11 +522,12 @@ export default function knowledgeExtension(pi) {
   pi.registerTool({
     name: "knowledge_publish",
     label: "Publish knowledge card",
-    description: "Move a reviewed draft into cards after the user explicitly confirms publication.",
+    description: "Publish the exact draft version previewed with knowledge_get and explicitly confirmed by the user. If it changed, preview and confirm again.",
     parameters: Type.Object({
       documentId: Type.String(),
       scope: Type.Optional(enumSchema(["current", "global", "project"])),
       userConfirmed: Type.Boolean({ description: "Must be true only after explicit user confirmation" }),
+      expectedContentHash: Type.String({ description: "document.contentHash from the knowledge_get preview the user confirmed; never substitute a newer hash without confirmation" }),
     }),
     async execute(_id, params, signal, onUpdate, ctx) {
       try {

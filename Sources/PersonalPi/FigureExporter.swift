@@ -122,12 +122,7 @@ enum FigureExporter {
         context.saveGState()
         context.setFillColor(CGColor(gray: 1, alpha: 1))
         context.fill(mediaBox)
-        let transform = page.getDrawingTransform(
-            .mediaBox,
-            rect: mediaBox,
-            rotate: 0,
-            preserveAspectRatio: true
-        )
+        let transform = fittingTransform(page: page, target: mediaBox)
         context.concatenate(transform)
         context.drawPDFPage(page)
         context.restoreGState()
@@ -163,12 +158,7 @@ enum FigureExporter {
         if let pdfURL = existingFileURL(for: .pdf, in: artifact),
            let document = CGPDFDocument(pdfURL as CFURL),
            let page = document.page(at: 1) {
-            let transform = page.getDrawingTransform(
-                .mediaBox,
-                rect: target,
-                rotate: 0,
-                preserveAspectRatio: true
-            )
+            let transform = fittingTransform(page: page, target: target)
             context.saveGState()
             context.concatenate(transform)
             context.drawPDFPage(page)
@@ -189,6 +179,26 @@ enum FigureExporter {
 
         guard let image = context.makeImage() else { throw FigureExportError.cannotCreateOutput }
         return image
+    }
+
+    /// CoreGraphics' drawing transform scales down, but does not enlarge a page.
+    /// Normalize its rotated bounds first, then explicitly fit in destination units
+    /// (points for PDF, pixels for raster). This preserves vector PDF content.
+    static func fittingTransform(page: CGPDFPage, target: CGRect) -> CGAffineTransform {
+        let box = page.getBoxRect(.mediaBox)
+        let rotated = abs(Int(page.rotationAngle)) % 180 != 0
+        let natural = CGRect(origin: .zero, size: rotated
+            ? CGSize(width: box.height, height: box.width) : box.size)
+        let normalized = page.getDrawingTransform(.mediaBox, rect: natural,
+                                                   rotate: 0, preserveAspectRatio: true)
+        let bounds = box.applying(normalized)
+        let fitted = aspectFit(source: bounds.size, target: target)
+        let scale = fitted.width / bounds.width
+        return normalized.concatenating(CGAffineTransform(
+            a: scale, b: 0, c: 0, d: scale,
+            tx: fitted.minX - bounds.minX * scale,
+            ty: fitted.minY - bounds.minY * scale
+        ))
     }
 
     private static func writeRaster(

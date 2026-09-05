@@ -55,7 +55,7 @@ Model-facing JSON output is bounded to 120,000 characters. Truncation affects on
 
 `knowledge_capture` never writes directly to reviewed `cards/`. Synthesized content goes to `drafts/`; raw or registered material goes to `inbox/` or `sources/`. It creates a new stable ID and file rather than silently overwriting an existing record.
 
-`knowledge_publish` accepts only an indexed draft and requires `userConfirmed: true`. It preserves the card ID, changes status to `reviewed`, moves the Markdown file into `cards/`, and reindexes. There is no knowledge deletion tool.
+`knowledge_publish` accepts only an indexed draft and requires `userConfirmed: true` and `expectedContentHash` from the user-confirmed `knowledge_get` preview (`document.contentHash`). Both the current source bytes and the indexed snapshot must match that hash. A changed draft must be reindexed, previewed, and confirmed again; callers must not substitute a newer hash automatically. It preserves the card ID, changes status to `reviewed`, moves the Markdown file into `cards/`, and reindexes. There is no knowledge deletion tool.
 
 ## Managed runtime
 

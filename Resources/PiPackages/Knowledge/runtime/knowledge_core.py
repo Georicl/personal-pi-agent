@@ -199,7 +199,10 @@ def file_hash(path: Path) -> str:
 
 
 def read_text(path: Path) -> str:
-    raw = path.read_bytes()
+    return decode_text(path.read_bytes())
+
+
+def decode_text(raw: bytes) -> str:
     if len(raw) > MAX_FILE_BYTES:
         raise KnowledgeCoreError(f"file exceeds {MAX_FILE_BYTES} bytes")
     for encoding in ("utf-8-sig", "utf-8", "utf-16", "latin-1"):
@@ -1164,13 +1167,16 @@ def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, An
     document_id = str(request.get("documentId") or "").strip()
     if not document_id:
         raise KnowledgeCoreError("publish requires documentId")
+    expected_hash = request.get("expectedContentHash")
+    if not isinstance(expected_hash, str) or not expected_hash:
+        raise KnowledgeCoreError("publish requires expectedContentHash from the user-confirmed preview")
     connection = connect_scope(scope, create=False)
     if connection is None:
         raise KnowledgeCoreError("knowledge index is not initialized")
     try:
         row = connection.execute(
             """
-            SELECT relative_path, category, status FROM documents
+            SELECT relative_path, category, status, content_hash FROM documents
             WHERE scope_id = ? AND id = ? AND error IS NULL
             """,
             (scope.scope_id, document_id),
@@ -1186,7 +1192,10 @@ def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, An
     knowledge_root = scope.knowledge_root.resolve()
     if not source.is_relative_to(knowledge_root) or source.suffix.lower() not in {".md", ".markdown"}:
         raise KnowledgeCoreError("draft path is outside the knowledge root or is not Markdown")
-    metadata, content = parse_frontmatter(read_text(source))
+    source_bytes = source.read_bytes()
+    if row["content_hash"] != expected_hash or hashlib.sha256(source_bytes).hexdigest() != expected_hash:
+        raise KnowledgeCoreError("draft changed since preview; refresh the index, preview, and confirm this version again")
+    metadata, content = parse_frontmatter(decode_text(source_bytes))
     if metadata.get("id") != document_id or metadata.get("status") != "draft":
         raise KnowledgeCoreError("draft changed since indexing; refresh the index before publishing")
     metadata["status"] = "reviewed"
@@ -1201,6 +1210,8 @@ def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, An
     except FileExistsError as error:
         raise KnowledgeCoreError(f"published card already exists: {destination.name}") from error
     try:
+        if source.read_bytes() != source_bytes:
+            raise KnowledgeCoreError("draft changed during publication; preview and confirm again")
         source.unlink()
     except Exception:
         destination.unlink(missing_ok=True)
