@@ -117,12 +117,13 @@ struct SessionCommandTests {
 @Suite("GUI workflow boundaries")
 @MainActor
 struct WorkflowBoundaryTests {
-    private func makeApp(_ root: URL) throws -> AppState {
+    private func makeApp(_ root: URL, newSessionTimeout: TimeInterval = 2) throws -> AppState {
         let project = root.appendingPathComponent("A")
         try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Fixtures/workflow_peer.py")
-        let client = PiRPCClient(executable: "/usr/bin/python3", arguments: ["-u", fixture.path, root.path])
+        let client = PiRPCClient(executable: "/usr/bin/python3", arguments: ["-u", fixture.path, root.path],
+                                 newSessionTimeout: newSessionTimeout)
         return AppState(client: client,
                         runtimeContext: PiRuntimeContext(environment: [:], dataRoot: root.appendingPathComponent("pi")),
                         workspacePaths: [project.path], refreshAccounts: false)
@@ -197,6 +198,29 @@ struct WorkflowBoundaryTests {
         #expect(app.sessionId == "native-B")
         #expect(app.agentStatus == "Session creation cancelled")
         #expect(client.processIdentifier == pid)
+        #expect(!app.isGenerating)
+    }
+
+    @Test("Late veto acknowledgement cannot restart an interactive new-session operation")
+    func delayedSessionVeto() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = try makeApp(root, newSessionTimeout: 0.1)
+        defer { app.piClient.stop() }
+        app.connectPi()
+        try await waitFor { app.sessionId != nil }
+        let session = app.sessionId
+        let pid = app.piClient.processIdentifier
+        try Data().write(to: root.appendingPathComponent("ask-new"))
+        app.startNewSession()
+        try await waitFor { app.uiRequest != nil }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(app.isSessionTransitioning)
+        app.respondToUIRequest(confirmed: false)
+        try await waitFor { !app.isSessionTransitioning }
+        #expect(app.agentStatus == "Session creation cancelled")
+        #expect(app.sessionId == session)
+        #expect(app.piClient.processIdentifier == pid)
         #expect(!app.isGenerating)
     }
 
@@ -369,7 +393,10 @@ struct RPCConnectionTests {
         var first: [Bool] = []
         var second: [Bool] = []
         client.start(workingDirectory: root.appendingPathComponent("slow").path) { ok, _ in first.append(ok) }
-        try await Task.sleep(for: .milliseconds(200))
+        // Cancel on this MainActor turn, before the startup reply can run. A
+        // 200ms sleep is not a deadline: under CI load it can resume after the
+        // peer's 350ms successful response and test a different scenario.
+        #expect(first.isEmpty)
         client.stop()
         client.start(workingDirectory: root.appendingPathComponent("slow").path) { ok, message in
             #expect(ok, "Replacement startup: \(message)")

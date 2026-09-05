@@ -177,6 +177,7 @@ final class PiRPCClient: NSObject {
     }
     private var pendingResponses: [String: PendingResponse] = [:]
     private var interactiveRequestIDs = Set<String>()
+    private var interactionRevision = UUID()
     private var generation = UUID()
     private var launchStderr = ""
     private let executableOverride: String?
@@ -315,6 +316,7 @@ final class PiRPCClient: NSObject {
 
     func newSession(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping (PiSessionChangeResult) -> Void) {
         let connection = generation
+        let interaction = interactionRevision
         request(type: "new_session", timeout: newSessionTimeout) { [weak self] response in
             // Pi 0.84.x can leave new_session pending while idle. Only a timeout
             // in this connection may restart it; a cancelled request never can.
@@ -323,9 +325,14 @@ final class PiRPCClient: NSObject {
                 completion(PiSessionChangeResult.decode(response))
                 return
             }
+            guard self.interactionRevision == interaction else {
+                completion(.failed) // Never restart after a human-facing hook.
+                return
+            }
             self.requestState { [weak self] state in
                 guard let self, self.generation == connection else { completion(.cancelled); return }
-                guard state?.isIdle == true, self.interactiveRequestIDs.isEmpty else {
+                guard state?.isIdle == true, self.interactiveRequestIDs.isEmpty,
+                      self.interactionRevision == interaction else {
                     completion(.failed)
                     return
                 }
@@ -595,6 +602,7 @@ final class PiRPCClient: NSObject {
 
     func respondToUIRequest(id: String, value: String? = nil, confirmed: Bool? = nil, cancelled: Bool = false) {
         interactiveRequestIDs.remove(id)
+        interactionRevision = UUID()
         var command: [String: Any] = [
             "type": "extension_ui_response",
             "id": id
@@ -674,14 +682,23 @@ final class PiRPCClient: NSObject {
         }
         let id = UUID().uuidString
         let connection = generation
+        let interaction = interactionRevision
         let duration = timeout ?? requestTimeout
         let timer = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(duration)) } catch { return }
-            // A human-facing extension hook is still executing the operation.
-            // Keep its response alive; a timeout fallback must not bypass a veto.
+            // After a dialog closes, Pi still needs time to acknowledge its
+            // result. Closing the UI is not completion of the session operation.
+            var lastInteraction = interaction
             while type == "new_session", let self, self.generation == connection,
-                  !self.interactiveRequestIDs.isEmpty, self.pendingResponses[id] != nil {
-                do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+                  self.pendingResponses[id] != nil {
+                if !self.interactiveRequestIDs.isEmpty {
+                    do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+                } else if self.interactionRevision != lastInteraction {
+                    lastInteraction = self.interactionRevision
+                    do { try await Task.sleep(for: .seconds(self.requestTimeout)) } catch { return }
+                } else {
+                    break
+                }
             }
             guard let self, self.generation == connection,
                   let response = self.pendingResponses.removeValue(forKey: id) else { return }
@@ -725,6 +742,7 @@ final class PiRPCClient: NSObject {
                       let request = Self.parseUIRequest(object) {
                 if ["select", "confirm", "input", "editor"].contains(request.method) {
                     interactiveRequestIDs.insert(request.id)
+                    interactionRevision = UUID()
                 }
                 onUIRequest?(request)
             } else if let event = Self.parseEvent(object) {

@@ -38,6 +38,29 @@ struct RuntimeServicesTests {
         #expect(result.error.count == 200_000)
     }
 
+    @Test("Parallel short-lived processes drain stdin, stdout and stderr before returning")
+    func parallelProcessCapture() async throws {
+        try await withThrowingTaskGroup(of: PiProcessResult.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    try PiProcessRunner.run(executable: URL(fileURLWithPath: "/usr/bin/python3"),
+                        arguments: ["-c", "import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(data); sys.stderr.buffer.write(data)"],
+                        workingDirectory: FileManager.default.temporaryDirectory,
+                        environment: ProcessInfo.processInfo.environment,
+                        input: Data(repeating: 42, count: 200_000), timeout: 10)
+                }
+            }
+            var completed = 0
+            for try await result in group {
+                #expect(result.status == 0)
+                #expect(result.output == Data(repeating: 42, count: 200_000))
+                #expect(result.error == result.output)
+                completed += 1
+            }
+            #expect(completed == 8)
+        }
+    }
+
     @Test("Timeout works even when the child does not read a large stdin payload")
     func processTimeout() async {
         let timedOut = await Task.detached {

@@ -72,6 +72,10 @@ for line in sys.stdin:
             session_id = header["id"]
             reply(request, {"cancelled": False}, delay=0.1)
     elif kind == "new_session":
+        if (root / "ask-new").exists():
+            pending_dialog = request
+            emit({"type": "extension_ui_request", "id": "new-question", "method": "confirm", "title": "New session?"})
+            continue
         cancelled = (root / "veto-new").exists()
         if not cancelled:
             session_id = "new-" + Path(cwd).name
@@ -98,7 +102,10 @@ for line in sys.stdin:
         reply(request)
     elif kind == "extension_ui_response":
         if pending_dialog:
-            reply(pending_dialog)
+            if pending_dialog["type"] == "new_session":
+                reply(pending_dialog, {"cancelled": True}, delay=0.35)
+            else:
+                reply(pending_dialog)
             pending_dialog = None
     elif kind == "abort":
         finish_model()

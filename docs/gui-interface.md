@@ -36,7 +36,7 @@ AppState (@MainActor)
 | PiSessionCoordinator | 持有 RPC client、连接代次和运行状态；AppState 转发观察，不另存一份连接状态 |
 | SessionCatalog.swift | 会话目录解析、扫描与分组；由 AppState 在后台调度 |
 | PiSettingsEditor / PiSettingsFile | 设置表单状态、作用域、校验、合并和读写；View 只绑定、呈现并触发运行时重载 |
-| PiProcessRunner | 后台一次性进程：并发排空 stdout/stderr、限制捕获大小、超时终止，供知识库、包管理和账户的一次性调用复用 |
+| PiProcessRunner | 后台一次性进程：独立 I/O 线程并发排空 stdout/stderr 和写入 stdin，避免共享队列繁忙造成假 EOF 超时；限制捕获大小、超时终止，供知识库、包管理和账户的一次性调用复用 |
 
 RPC 与交互式 OAuth 使用专用长连接，不套用一次性 runner。RPC 的 stdin 写入在每连接独立
 队列执行，管道关闭以 EPIPE 错误处理，不让 SIGPIPE 终止 GUI。读取事件按主队列顺序交付。
@@ -123,7 +123,7 @@ PiRunLifecycle 区分 idle/running/waiting。`turn_end`、`agent_end`、`extensi
 PiRPCClient 的可变连接状态与回调在 MainActor 串行处理，阻塞写入在独立队列。每次连接有独立 generation，
 旧进程的数据、退出事件和定时器不得更新新连接。断开会清空缓冲区并取消、完成所有
 pending 请求。普通请求默认 30 秒，启动 5 秒，压缩/内部扩展命令 600 秒。
-Pi 0.84.x 的 new_session 空闲超时回退只允许当前连接、已确认空闲且没有交互请求时触发；交互 hook 未完成时保留原响应等待，取消不触发重启。
+Pi 0.84.x 的 new_session 空闲超时回退只允许当前连接、已确认空闲且从未发生交互时触发。交互 hook 未完成时保留原响应等待；窗口关闭后仍按普通请求期限等待 Pi 确认结果，不能将 UI 消失视为操作完成。`interactionRevision` 也隔离超时状态查询期间发生的交互，取消不触发重启。
 包管理切换项目会清空旧上下文的 busy、快照和未保存路径编辑，并忽略旧回调。
 
 | 状态 | 用途 |
