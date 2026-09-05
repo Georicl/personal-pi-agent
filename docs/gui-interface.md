@@ -68,6 +68,7 @@ AppSection 与页面映射：
 | .overview | OverviewView | 当前作用域快捷对话、账户和用量摘要 |
 | .sessions | SessionsView | 会话目录、消息、工具活动和会话操作 |
 | .knowledge | KnowledgeView | Global/Project 文件、容量、分类、检索、导入、索引与审阅发布 |
+| .literature | LiteratureView | 可编辑检索条件、摘要与来源、选择入库和总结草稿 |
 | .packages | PackagesView | Packages 与资源配置 |
 | .projects | ProjectsView | 项目注册、Git 与会话统计 |
 | .tasks | TasksView | 任务状态与未读结果 |
@@ -390,6 +391,23 @@ UI 测试支持：
 测试入口：`KnowledgeLibraryTests` 覆盖解码、时间、容量、延迟响应隔离；设置 `PERSONAL_PI_TEST_KNOWLEDGE_RUNTIME=1` 可运行真实 Swift/Python 导入到检索流程。XCUITest 使用 `PERSONAL_PI_UI_TESTING` 下的临时 JSON fixture，不访问真实用户知识库；知识页面测试覆盖中文文案、分类筛选和 Project/Global 切换。
 
 ## 12. 新功能接入模板
+
+### Literature 接口
+
+`AppState.literatureStore` 管理条件、结果和已保存来源。`configureKnowledge()` 同步传入当前
+精确 cwd；scope generation 隔离旧异步结果，条件编辑另使 search revision 失效。
+GUI 拟定条件请求携带 requestId，中途编辑或切换项目后，迟到的模型计划不覆盖新条件。
+`prepareLiteraturePlan()`、`summarizeLiteratureSources()` 通过既有会话发送流程工作，尊重输入框草稿、
+忙碌状态和项目边界，不另建隐藏模型客户端。
+
+`KnowledgeCoreClient.executeLiterature` 复用 Knowledge 锁定环境及进程边界；环境准备串行，远程查询
+使用独立后台队列，不阻塞本地知识库列表。实际数据来自 `Literature/runtime/literature.py`。
+`tool_execution_end.result.details.personalPiLiterature` 按 schemaVersion=1 解码为
+`LiteratureEvent` 的 plan/search/saved/draft 类型，接受时校验 cwd。
+协议与来源、草稿、快照边界见 [Literature 插件](literature-plugin.md)。
+
+保存请求捕获 cwd/runId/recordIds：保存只写当时作用域，切换不改写目标。模型返回的书目字段
+不能代替后端检索快照。入库/草稿工具完成后刷新 Knowledge。文献 UI 没有自动发布按钮。
 
 一个同时涉及 Agent 和 GUI 的新功能应按以下顺序接入：
 

@@ -1,0 +1,8 @@
+{
+  "name": "@personal-pi/literature",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Reviewed literature search and provenance-preserving Knowledge capture",
+  "keywords": ["pi-package"],
+  "pi": { "extensions": ["extensions"] }
+}

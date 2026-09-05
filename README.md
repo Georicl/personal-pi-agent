@@ -2,7 +2,7 @@
 
 Personal Pi 是一个以 [Pi Coding Agent](https://pi.dev/) 为运行时的原生 macOS 桌面客户端。它保留 Pi 的 Agent 循环、工具调用、会话树、上下文压缩、Skills、Extensions 与 Packages，同时提供项目切换、会话总览、任务状态、账户状态和图形化配置。
 
-当前版本提供 Pi 桌面外壳、表格数据绘图和 Global/Project 本地知识库。连接生命周期、任务完成判断、知识来源身份和配置模块已有独立回归测试；后续开发继续面向学术编辑与文献工作流。
+当前版本提供 Pi 桌面外壳、表格数据绘图、Global/Project 本地知识库和文献检索 MVP。连接生命周期、任务完成判断、知识来源身份、检索入库和配置模块已有独立回归测试。
 
 ## 系统要求
 
@@ -61,6 +61,7 @@ Global Chat 的工作目录为 `~/.pi/chat`。Project 模式以所选项目根�
 | Overview | 当前作用域入口 | 新会话、发送消息、账户状态、当前会话用量、最近会话 |
 | Sessions | 会话总览与对话 | 恢复、切换、筛选、停止、压缩、会话信息、树导航、Fork、Clone、HTML 导出、复制回复、资源重载 |
 | Knowledge | 知识库总览 | Global/Project 切换、文件数与总大小、分类列表、文本搜索、文件详情、导入、更新/重建索引、发布已审阅草稿 |
+| Literature | 文献检索 | Pi 拟定可编辑检索式、Europe PMC 查询、摘要与 DOI/PMID、去重、选择入库、总结草稿 |
 | Packages | Pi 包与资源管理 | Global/Project 安装、移除、更新 Packages；启用或禁用 Extensions、Skills、Prompt Templates、Themes |
 | Projects | 项目总览 | 创建或添加项目、查看 Git 分支、修改数量、会话数量并快速切换 |
 | Tasks | 任务状态 | 按 Submitted、Running、Waiting、Finished 展示；同一 Pi Session 持续更新同一任务 |
@@ -213,6 +214,24 @@ GUI 已完成 Pi 的核心使用闭环，但不宣称与全部 Pi CLI/TUI/RPC �
 
 这些差异不会阻止普通 Agent 对话、工具调用、会话管理、配置和包管理。
 
+## 文献检索
+
+文献流程：选择目标 Project → **Literature / 文献检索** → 输入研究问题 → “让 Pi 拟定检索条件”。
+该操作使用当前会话与模型，计划自动回到文献页。也可直接手动输入英文检索式，无需模型调用。
+检查关键词、年份、结果数量与完整的对外检索式后，再“检索文献”。只发送检索条件，不上传本地知识。
+展开摘要与来源，勾选所需文献，再“将所选文献存入知识库”：Project 写入该项目 `sources/`，
+Global Chat 写入全局 `sources/`；重复保存复用来源 ID，不覆盖原稿。
+
+“让 Pi 总结已保存的文献”读取本地来源并写入 `drafts/`，区分事实、总结与推断。成为已审阅知识卡
+仍须在 Knowledge 中预览、确认并发布。每次检索保留检索式、UTC 时间、来源服务、记录 ID 和项目。
+快照存于动态 Pi 根目录的 `personal/literature/`；切换项目清空页面旧状态，不删除快照或来源。
+已提交的保存仅在原项目完成。
+
+MVP 使用 Europe PMC（包含 PubMed 记录），每次最多取 50 条，显示总命中数和去重条数；不是系统综述
+的穷尽性检索。不自动下载全文，不补猜摘要或 DOI；总结的证据范围仅为书目信息与摘要。
+网络错误明确显示，可自行重试。Pi CLI 可使用 `/literature <研究问题>` 和 `literature_plan/search/save/draft`。
+插件依赖同发行包的 Knowledge，不能单独复制 Literature 目录使用。协议见 [Literature 插件接口](docs/literature-plugin.md)。
+
 ## 开发与验证
 
 工程包含 `PersonalPi`、`PersonalPiTests` 和 `PersonalPiUITests`。常用验证：
@@ -228,13 +247,14 @@ scripts/check-package-bridge.sh
 scripts/check-starter-pack.sh
 scripts/check-figure-plugin.sh
 scripts/check-knowledge-plugin.sh
+scripts/check-literature-plugin.sh
 scripts/build-app.sh debug
 ```
 
 环境覆盖项：
 
 PR 和 main 推送会运行 `.github/workflows/checks.yml`：Swift 单元及本地 Python 集成测试、
-严格 Release 构建、Xcode 构建、Knowledge/Figure 包检查。Pi 包检查使用固定版本的离线运行时，
+严格 Release 构建、Xcode 构建、Knowledge/Figure/Literature 包检查。Pi 包检查使用固定版本的离线运行时，
 不需要模型 API 凭证。交互式 XCUITest 仍需本机允许系统 UI 自动化。
 
 | 环境变量 | 作用 |

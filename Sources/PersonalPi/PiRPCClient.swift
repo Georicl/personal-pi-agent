@@ -11,6 +11,7 @@ struct PiStreamEvent: Sendable {
     let toolIsError: Bool?
     let usage: SessionUsage?
     let figureArtifact: FigureArtifact?
+    var literature: LiteratureEvent? = nil
 }
 
 struct PiSessionState: Sendable {
@@ -768,6 +769,7 @@ final class PiRPCClient: NSObject {
         var toolIsError: Bool?
         var role: String?
         var figureArtifact: FigureArtifact?
+        var literature: LiteratureEvent?
 
         if let assistantEvent = object["assistantMessageEvent"] as? [String: Any] {
             let assistantEventType = assistantEvent["type"] as? String
@@ -811,6 +813,7 @@ final class PiRPCClient: NSObject {
                 toolDetail = parseContent(result["content"])
                 if let details = result["details"] as? [String: Any] {
                     figureArtifact = FigureArtifact.decode(details["personalPiFigureArtifact"])
+                    literature = LiteratureEvent.decode(details["personalPiLiterature"])
                 }
             }
         }
@@ -825,7 +828,8 @@ final class PiRPCClient: NSObject {
             toolDetail: toolDetail,
             toolIsError: toolIsError,
             usage: parseUsage(object["usage"]),
-            figureArtifact: figureArtifact
+            figureArtifact: figureArtifact,
+            literature: literature
         )
     }
 

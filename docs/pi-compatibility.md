@@ -1,5 +1,10 @@
 # Pi Compatibility Record
 
+Literature MVP uses the same Pi 0.84.3 Package/Extension contract: `/literature`
+plus `literature_plan/search/save/draft`. The isolated native RPC check invokes
+the actual plan/save/draft handlers with Pi's context, without model credentials.
+Search provider access is separately opt-in with `PERSONAL_PI_TEST_LITERATURE_LIVE=1`.
+
 This file records the Pi runtime contract that Personal Pi has actually checked. It is not a promise that every future Pi release has the same behavior.
 
 ## Compiler baseline

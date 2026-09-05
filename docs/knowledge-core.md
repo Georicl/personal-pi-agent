@@ -176,7 +176,12 @@ The current core and Pi Package do not yet provide:
 
 - embeddings or model reranking;
 - OCR, DOCX, HTML, or web ingestion;
-- literature database adapters.
+- full-text literature downloads and systematic-review collection management.
+
+The bundled [Literature adapter](literature-plugin.md) now queries Europe PMC
+metadata/abstracts and reuses `capture` for sources and summary drafts. Capture
+accepts optional structured `provenance`; it cannot override Knowledge-owned IDs,
+status, timestamps or source references.
 
 The deterministic local index remains useful without those layers. See [Knowledge Plugin](knowledge-plugin.md) for the Pi tools and command contract.
 
