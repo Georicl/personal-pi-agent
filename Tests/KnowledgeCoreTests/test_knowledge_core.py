@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -48,6 +49,120 @@ def write_minimal_pdf(path: Path, text: str) -> None:
 
 
 class KnowledgeCoreTests(unittest.TestCase):
+    def search(self, query, limit=20):
+        return core.search_scopes({'piRoot': str(self.pi_root),
+            'scopes': [{'kind': 'project', 'projectRoot': str(self.project_root)}],
+            'query': query, 'limit': limit})['results']
+
+    def test_short_biomedical_terms_are_required_before_result_limiting(self):
+        for index in range(12):
+            core.capture_record(self.project_scope, {'category': 'sources', 'title': f'B cell {index}', 'content': 'B cell response.'})
+        core.capture_record(self.project_scope, {'category': 'sources', 'title': 'T cell', 'content': 'T cell receptor.'})
+        self.assertEqual([hit['document']['title'] for hit in self.search('T cell', limit=1)], ['T cell'])
+        core.capture_record(self.project_scope, {'category': 'sources', 'title': 'R package', 'content': 'Use an R package, not a Python package.'})
+        self.assertEqual(len(self.search('R package')), 1)
+        self.assertEqual(self.search('Z cell'), [])
+        self.assertEqual(self.search('%'), [])
+
+    def test_short_only_queries_support_and_semantics_and_chinese(self):
+        core.capture_record(self.project_scope, {'category': 'sources', 'title': 'Methods', 'content': 'R and AI; 用图谱记录证据。 C++ bindings.'})
+        self.assertEqual(len(self.search('R AI')), 1)
+        self.assertEqual(len(self.search('图谱 证据')), 1)
+        self.assertEqual(len(self.search('C++')), 1)
+        self.assertEqual(self.search('R DNA'), [])
+
+    def test_imported_source_identity_survives_rename_rebuild_and_index_loss(self):
+        source = self.root / 'paper.txt'
+        source.write_text('Unique provenance evidence.', encoding='utf-8')
+        core.import_sources(self.project_scope, {'paths': [str(source)]})
+        document = self.search('provenance')[0]['document']
+        card = core.capture_record(self.project_scope, {'title': 'Summary', 'content': 'A model summary.',
+            'sources': [{'source_id': document['id'], 'locator': 'Paragraph 1'}]})
+        imported = self.project_scope.knowledge_root / 'sources/paper.txt'
+        renamed = imported.with_name('renamed.txt')
+        imported.rename(renamed)
+        core.index_scope(self.project_scope, rebuild=True)
+        self.assertEqual(core.get_document(self.project_scope, document['id'])['document']['relativePath'], 'sources/renamed.txt')
+        resolved = core.get_document(self.project_scope, card['document']['id'])['resolvedSources'][0]
+        self.assertEqual(resolved['resolution'], 'found')
+        self.assertEqual(resolved['document']['id'], document['id'])
+        self.project_scope.index_path.unlink()  # Only the disposable test index.
+        core.index_scope(self.project_scope)
+        self.assertEqual(core.get_document(self.project_scope, document['id'])['document']['relativePath'], 'sources/renamed.txt')
+        self.assertEqual(renamed.read_bytes(), source.read_bytes())
+
+    def test_existing_path_ids_migrate_even_if_source_was_already_renamed(self):
+        core.initialize_scope(self.project_scope)
+        source = self.project_scope.knowledge_root / 'sources/legacy.txt'
+        source.write_text('Legacy citation evidence', encoding='utf-8')
+        # Seed a v1 database using the old path-derived identity, without a registry.
+        old_id = core.stable_id(self.project_scope.scope_id, 'sources/legacy.txt', prefix='source')
+        connection = core.connect_scope(self.project_scope, create=True)
+        core.insert_document(connection, self.project_scope, source, 'sources',
+                             core.extract_document(self.project_scope, source, 'sources'), core.file_hash(source), source.stat())
+        connection.commit()
+        connection.close()
+        source.rename(source.with_name('moved.txt'))
+        core.index_scope(self.project_scope, rebuild=True)
+        self.assertEqual(core.get_document(self.project_scope, old_id)['document']['relativePath'], 'sources/moved.txt')
+
+    def test_identical_copies_are_not_merged_and_missing_references_are_explicit(self):
+        source = self.root / 'one.txt'
+        source.write_text('Duplicate content evidence', encoding='utf-8')
+        core.import_sources(self.project_scope, {'paths': [str(source)]})
+        old_id = self.search('Duplicate')[0]['document']['id']
+        (self.project_scope.knowledge_root / 'sources/two.txt').write_bytes(source.read_bytes())
+        core.index_scope(self.project_scope)
+        self.assertEqual(len({hit['document']['id'] for hit in self.search('Duplicate')}), 2)
+        (self.project_scope.knowledge_root / 'sources/one.txt').unlink()
+        core.index_scope(self.project_scope)
+        card = core.capture_record(self.project_scope, {'title': 'Missing', 'content': 'Unverified', 'sources': [{'source_id': old_id}]})
+        self.assertEqual(card['resolvedSources'][0]['resolution'], 'missing')
+
+    def test_registry_corruption_is_not_overwritten_and_metadata_is_returned(self):
+        captured = core.capture_record(self.project_scope, {'category': 'sources', 'title': 'Metadata', 'content': 'Evidence'})
+        self.assertIn('created_at', captured['document']['metadata'])
+        registry = self.project_scope.knowledge_root / '.source-identities.json'
+        registry.write_text('broken', encoding='utf-8')
+        with self.assertRaises(ValueError):
+            core.index_scope(self.project_scope)
+        self.assertEqual(registry.read_text(), 'broken')
+        self.assertEqual(core.get_document(self.project_scope, captured['document']['id'])['document']['title'], 'Metadata')
+
+    def test_portable_registry_preserves_ids_when_project_directory_moves(self):
+        source = self.root / 'portable.txt'
+        source.write_text('Portable reference', encoding='utf-8')
+        core.import_sources(self.project_scope, {'paths': [str(source)]})
+        old_id = self.search('Portable')[0]['document']['id']
+        moved = self.root / 'moved-project'
+        shutil.copytree(self.project_root, moved)
+        scope = core.KnowledgeScope.from_request({'kind': 'project', 'projectRoot': str(moved)}, str(self.pi_root))
+        core.index_scope(scope)
+        self.assertEqual(core.get_document(scope, old_id)['document']['relativePath'], 'sources/portable.txt')
+
+    def test_ambiguous_duplicate_moves_do_not_guess_a_citation_target(self):
+        core.initialize_scope(self.project_scope)
+        root = self.project_scope.knowledge_root / 'sources'
+        (root / 'old.txt').write_text('Ambiguous duplicate')
+        core.index_scope(self.project_scope)
+        old_id = self.search('Ambiguous')[0]['document']['id']
+        (root / 'old.txt').unlink()
+        (root / 'new-a.txt').write_text('Ambiguous duplicate')
+        (root / 'new-b.txt').write_text('Ambiguous duplicate')
+        core.index_scope(self.project_scope)
+        ids = {hit['document']['id'] for hit in self.search('Ambiguous')}
+        self.assertEqual(len(ids), 2)
+        self.assertNotIn(old_id, ids)
+
+    def test_project_cards_resolve_global_sources_without_other_project_access(self):
+        global_source = core.capture_record(self.global_scope, {'category': 'sources', 'title': 'Global source', 'content': 'Global evidence'})
+        card = core.capture_record(self.project_scope, {'title': 'Project note', 'content': 'Model inference',
+            'sources': [{'source_id': global_source['document']['id'], 'locator': 'Paragraph 1'}]})
+        self.assertEqual(card['resolvedSources'][0]['document']['scopeId'], 'global')
+        external = core.capture_record(self.project_scope, {'category': 'sources', 'title': 'External source',
+            'content': 'Source excerpt', 'sources': [{'url': 'https://example.org/paper'}]})
+        self.assertEqual(external['resolvedSources'][0]['resolution'], 'external')
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name).resolve()

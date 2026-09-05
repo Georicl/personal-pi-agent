@@ -16,6 +16,15 @@ Legacy `entries/` directories from the Starter Pack are indexed for compatibilit
 
 SQLite databases are derived indexes. They may be deleted and rebuilt without deleting source files or cards. Agent instructions remain in `AGENTS.md`; session history remains in Pi JSONL. Neither belongs in the knowledge database.
 
+`.source-identities.json` is durable, human-readable **source identity metadata**, not a disposable
+index. Back it up and move it together with the knowledge directory. Imported files are never
+rewritten to inject IDs. Explicit Markdown frontmatter IDs remain authoritative; other sources
+receive portable IDs here. Existing path-derived IDs are retained during migration. A uniquely
+matched, unchanged source can be renamed/moved without breaking citations, even during rebuild.
+Identical copies remain separate records. Ambiguous moves or simultaneous rename-and-content-edit
+are not guessed; use explicit frontmatter IDs where that editing workflow is needed.
+Missing sources remain missing, and a corrupt registry is reported instead of silently replaced.
+
 ## 2. Scope and paths
 
 Global content:
@@ -140,6 +149,14 @@ Merged Project-first search:
 ~~~
 
 Every result contains the document identity and provenance plus an exact chunk, locator, heading/page, and deterministic score. Multi-term full-text queries require every term to match the same chunk; semantic expansion and optional broad fallback belong to the later Pi Extension layer. A missing scope index is reported in the `scopes` array rather than being silently represented as a valid empty result.
+
+Trigram FTS selects candidates, followed by an all-term constraint **before** limiting results.
+Short Latin tokens use word boundaries (`T cell` does not match `B cell`, `R` is not any word
+containing r); short Chinese terms retain substring matching. Short-only queries still use AND
+semantics. `%` and `_` are not SQL wildcard search operators. C++/C# suffixes are retained.
+Document responses include the original `metadata` (timestamps, authors and other frontmatter).
+`get` additionally returns `resolvedSources`: current-project references, then Global references,
+marked `found`, `missing`, `external`, or `unlinked`, preserving the caller's locator.
 
 ## 7. Incremental behavior
 

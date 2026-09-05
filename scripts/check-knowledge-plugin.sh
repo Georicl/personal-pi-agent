@@ -20,6 +20,7 @@ for required in \
   "$package_root/personal-pi-plugin.json" \
   "$extension_path" \
   "$package_root/runtime/knowledge_core.py" \
+  "$package_root/runtime/source_identity.py" \
   "$package_root/runtime/pyproject.toml" \
   "$package_root/runtime/uv.lock" \
   "$skill_path"; do
