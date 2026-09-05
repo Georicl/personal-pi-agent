@@ -557,7 +557,7 @@ private struct ResourcePathRow: View {
 }
 
 @MainActor
-private final class PiPackagesViewModel: ObservableObject {
+final class PiPackagesViewModel: ObservableObject {
     @Published var snapshot = PiPackageSnapshot.empty
     @Published var scope: PiPackageScope = .user
     @Published var installSource = ""
@@ -575,6 +575,13 @@ private final class PiPackagesViewModel: ObservableObject {
     private var contextID = UUID()
     private var hasConfigured = false
     private var onResourcesChanged: () -> Void = {}
+    private let loader: (URL, URL, @escaping @Sendable (Result<PiPackageSnapshot, Error>) -> Void) -> Void
+
+    init(loader: @escaping (URL, URL, @escaping @Sendable (Result<PiPackageSnapshot, Error>) -> Void) -> Void = {
+        PiPackageBridge.load(agentDirectory: $0, workingDirectory: $1, completion: $2)
+    }) {
+        self.loader = loader
+    }
 
     var scopePathLabel: String {
         if scope == .project {
@@ -620,7 +627,15 @@ private final class PiPackagesViewModel: ObservableObject {
         } else if !projectAvailable {
             scope = .user
         }
-        if changed { contextID = UUID() }
+        if changed {
+            contextID = UUID()
+            isBusy = false
+            isLoading = false
+            snapshot = .empty
+            installSource = ""
+            pathsAreDirty = false
+            pathTexts = [:]
+        }
         load()
     }
 
@@ -653,9 +668,9 @@ private final class PiPackagesViewModel: ObservableObject {
             status = "Loading Pi packages…"
             statusIsError = false
         }
-        PiPackageBridge.load(
-            agentDirectory: agentDirectory,
-            workingDirectory: workingDirectory
+        loader(
+            agentDirectory,
+            workingDirectory
         ) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.contextID == requestID else { return }
@@ -787,7 +802,7 @@ private final class PiPackagesViewModel: ObservableObject {
         }
     }
 
-    private func beginOperation(
+    func beginOperation(
         _ progress: String,
         successMessage: String,
         clearInstallSourceOnSuccess: Bool = false,

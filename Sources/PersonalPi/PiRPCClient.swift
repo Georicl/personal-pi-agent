@@ -148,20 +148,43 @@ struct PiModelOption: Identifiable, Sendable, Hashable {
     }
 }
 
-final class PiRPCClient: NSObject, @unchecked Sendable {
+@MainActor
+final class PiRPCClient: NSObject {
     private var process: Process?
     private var inputPipe: Pipe?
     private var outputPipe: Pipe?
+    private var errorPipe: Pipe?
     private var outputBuffer = Data()
-    private var onStart: (@Sendable (Bool, String) -> Void)?
-    private var pendingResponses: [String: ([String: Any]) -> Void] = [:]
-    private let stderrLock = NSLock()
+    private var onStart: ((Bool, String) -> Void)?
+    private struct PendingResponse {
+        let completion: ([String: Any]) -> Void
+        let timeout: Task<Void, Never>
+    }
+    private var pendingResponses: [String: PendingResponse] = [:]
+    private var generation = UUID()
     private var launchStderr = ""
-    private var didFinishLaunch = false
+    private let executableOverride: String?
+    private let argumentsOverride: [String]?
+    private let startupTimeout: TimeInterval
+    private let requestTimeout: TimeInterval
+    private let newSessionTimeout: TimeInterval
     var onEvent: ((PiStreamEvent) -> Void)?
     var onError: ((String) -> Void)?
     var onTermination: ((String) -> Void)?
     var onUIRequest: ((PiUIRequest) -> Void)?
+
+    init(executable: String? = nil, arguments: [String]? = nil,
+         startupTimeout: TimeInterval = 5, requestTimeout: TimeInterval = 30,
+         newSessionTimeout: TimeInterval = 2) {
+        executableOverride = executable
+        argumentsOverride = arguments
+        self.startupTimeout = startupTimeout
+        self.requestTimeout = requestTimeout
+        self.newSessionTimeout = newSessionTimeout
+        super.init()
+    }
+
+    var pendingRequestCount: Int { pendingResponses.count }
 
     var processIdentifier: Int32? {
         guard let process, process.isRunning else { return nil }
@@ -172,13 +195,13 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         PiLaunchConfiguration.modelLabel(for: workingDirectory)
     }
 
-    func start(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping @Sendable (Bool, String) -> Void) {
+    func start(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping (Bool, String) -> Void) {
         guard process == nil else {
-            completion(true, "already running")
+            completion(onStart == nil, onStart == nil ? "already running" : "Pi is connecting")
             return
         }
 
-        guard let executable = PiLaunchConfiguration.resolvedExecutable() else {
+        guard let executable = executableOverride ?? PiLaunchConfiguration.resolvedExecutable() else {
             completion(false, PiLaunchConfiguration.missingMessage)
             return
         }
@@ -202,7 +225,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         let error = Pipe()
 
         process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = PiLaunchConfiguration.arguments(projectTrusted: projectTrusted)
+        process.arguments = argumentsOverride ?? PiLaunchConfiguration.arguments(projectTrusted: projectTrusted)
         process.currentDirectoryURL = URL(fileURLWithPath: cwd)
         process.environment = PiLaunchConfiguration.processEnvironment()
         process.standardInput = input
@@ -212,107 +235,78 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         self.process = process
         self.inputPipe = input
         self.outputPipe = output
-
-        stderrLock.lock()
+        self.errorPipe = error
+        generation = UUID()
+        let connection = generation
+        outputBuffer = Data()
         launchStderr = ""
-        didFinishLaunch = false
-        stderrLock.unlock()
-
-        let complete: @Sendable (Bool, String) -> Void = { [weak self] success, message in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.stderrLock.lock()
-                let alreadyFinished = self.didFinishLaunch
-                if !alreadyFinished {
-                    self.didFinishLaunch = true
-                }
-                self.stderrLock.unlock()
-                guard !alreadyFinished else { return }
-                self.onStart = nil
-                if !success {
-                    self.process = nil
-                    self.inputPipe = nil
-                    self.outputPipe = nil
-                }
-                completion(success, message)
-            }
-        }
-        self.onStart = complete
+        onStart = completion
 
         output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
-            self?.consume(data)
+            Task { @MainActor in
+                guard let self, self.generation == connection else { return }
+                self.consume(data)
+            }
         }
 
         error.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
-            self?.stderrLock.lock()
-            self?.launchStderr += text
-            self?.stderrLock.unlock()
+            Task { @MainActor in
+                guard let self, self.generation == connection else { return }
+                self.launchStderr = String((self.launchStderr + text).suffix(16_384))
+            }
         }
 
         process.terminationHandler = { [weak self] process in
-            guard let self, self.process === process else { return }
-            self.process = nil
-            self.inputPipe = nil
-            self.outputPipe = nil
-            self.stderrLock.lock()
-            let snippet = self.launchStderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            let launchCompleted = self.didFinishLaunch
-            self.stderrLock.unlock()
-            let message = snippet.isEmpty ? "Pi exited with status \(process.terminationStatus)" : snippet
-            if launchCompleted {
-                self.onTermination?(message)
-            } else {
-                complete(false, message)
+            Task { @MainActor in
+                guard let self, self.generation == connection else { return }
+                let snippet = self.launchStderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                let message = snippet.isEmpty ? "Pi exited with status \(process.terminationStatus)" : snippet
+                let wasConnected = self.onStart == nil
+                self.disconnect(reason: message)
+                if wasConnected { self.onTermination?(message) }
             }
         }
 
         do {
             try process.run()
-            request(type: "get_state") { response in
+            request(type: "get_state", timeout: startupTimeout) { [weak self] response in
+                guard let self, self.generation == connection else { return }
                 if Self.responseSucceeded(response) {
-                    complete(true, "connected")
+                    let callback = self.onStart
+                    self.onStart = nil
+                    callback?(true, "connected")
                 } else {
-                    complete(false, response["error"] as? String ?? "Pi RPC did not respond")
+                    self.disconnect(reason: response["error"] as? String ?? "Pi RPC did not respond")
                 }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-                self?.stderrLock.lock()
-                let snippet = self?.launchStderr.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                self?.stderrLock.unlock()
-                complete(false, snippet.isEmpty ? "Pi did not respond" : snippet)
             }
         } catch {
-            self.process = nil
-            complete(false, error.localizedDescription)
+            disconnect(reason: error.localizedDescription)
         }
     }
 
-    func sendPrompt(_ message: String) {
-        send(command: ["id": UUID().uuidString, "type": "prompt", "message": message])
+    func sendPrompt(_ message: String, completion: @escaping (Bool, String?) -> Void = { _, _ in }) {
+        request(type: "prompt", fields: ["message": message], timeout: 600) { response in
+            completion(Self.responseSucceeded(response), response["error"] as? String)
+        }
     }
 
-    func newSession(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping @Sendable (Bool) -> Void) {
-        let id = UUID().uuidString
-        pendingResponses[id] = { response in
-            completion(Self.responseSucceeded(response))
-        }
-        send(command: ["id": id, "type": "new_session"])
-
-        // Pi 0.84.x can leave new_session pending when there is no active
-        // turn. Restarting the RPC process creates the same fresh session
-        // while keeping the GUI responsive and preserving Pi's session files.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self,
-                  self.pendingResponses.removeValue(forKey: id) != nil else { return }
+    func newSession(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping (Bool) -> Void) {
+        let connection = generation
+        request(type: "new_session", timeout: newSessionTimeout) { [weak self] response in
+            // Pi 0.84.x can leave new_session pending while idle. Only a timeout
+            // in this connection may restart it; a cancelled request never can.
+            guard let self, self.generation == connection,
+                  response["timedOut"] as? Bool == true else {
+                completion(Self.responseSucceeded(response))
+                return
+            }
             self.stop()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                self.start(workingDirectory: workingDirectory, projectTrusted: projectTrusted) { success, _ in
-                    completion(success)
-                }
+            self.start(workingDirectory: workingDirectory, projectTrusted: projectTrusted) { success, _ in
+                completion(success)
             }
         }
     }
@@ -328,7 +322,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         if let customInstructions, !customInstructions.isEmpty {
             fields["customInstructions"] = customInstructions
         }
-        request(type: "compact", fields: fields) { response in
+        request(type: "compact", fields: fields, timeout: 600) { response in
             completion?(Self.responseSucceeded(response))
         }
     }
@@ -494,7 +488,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
             return
         }
         let message = "/\(name) \(data.base64EncodedString())"
-        request(type: "prompt", fields: ["message": message]) { response in
+        request(type: "prompt", fields: ["message": message], timeout: 600) { response in
             defer { try? FileManager.default.removeItem(at: responseURL) }
             guard Self.responseSucceeded(response),
                   let data = try? Data(contentsOf: responseURL),
@@ -587,8 +581,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
     }
 
     func requestSessionStats(completion: @escaping (SessionUsage?) -> Void) {
-        let id = UUID().uuidString
-        pendingResponses[id] = { response in
+        request(type: "get_session_stats") { response in
             guard let data = response["data"] as? [String: Any],
                   let tokens = data["tokens"] as? [String: Any] else {
                 completion(nil)
@@ -607,19 +600,57 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
                 contextPercent: contextPercent
             ))
         }
-        send(command: ["id": id, "type": "get_session_stats"])
     }
 
     func stop() {
-        process?.terminate()
+        disconnect(reason: "Pi connection closed")
+    }
+
+    private func disconnect(reason: String) {
+        generation = UUID()
+        let oldProcess = process
+        outputPipe?.fileHandleForReading.readabilityHandler = nil
+        errorPipe?.fileHandleForReading.readabilityHandler = nil
+        oldProcess?.terminationHandler = nil
+        try? inputPipe?.fileHandleForWriting.close()
         process = nil
         inputPipe = nil
         outputPipe = nil
+        errorPipe = nil
+        outputBuffer = Data()
+        let startup = onStart
+        onStart = nil
+        let pending = pendingResponses
+        pendingResponses.removeAll()
+        for response in pending.values { response.timeout.cancel() }
+        if let oldProcess, oldProcess.isRunning {
+            oldProcess.terminate()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+                if oldProcess.isRunning { kill(oldProcess.processIdentifier, SIGKILL) }
+            }
+        }
+        startup?(false, reason)
+        for response in pending.values {
+            response.completion(["success": false, "error": reason, "cancelled": true])
+        }
     }
 
-    private func request(type: String, fields: [String: Any] = [:], completion: @escaping ([String: Any]) -> Void) {
+    private func request(type: String, fields: [String: Any] = [:], timeout: TimeInterval? = nil,
+                         completion: @escaping ([String: Any]) -> Void) {
+        guard inputPipe != nil else {
+            completion(["success": false, "error": "Pi is not connected"])
+            return
+        }
         let id = UUID().uuidString
-        pendingResponses[id] = completion
+        let connection = generation
+        let duration = timeout ?? requestTimeout
+        let timer = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(duration)) } catch { return }
+            guard let self, self.generation == connection,
+                  let response = self.pendingResponses.removeValue(forKey: id) else { return }
+            response.completion(["success": false, "error": "Pi \(type) timed out", "timedOut": true])
+        }
+        pendingResponses[id] = PendingResponse(completion: completion, timeout: timer)
         var command = fields
         command["id"] = id
         command["type"] = type
@@ -628,8 +659,12 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
 
     private func send(command: [String: Any]) {
         guard let inputPipe, let data = try? JSONSerialization.data(withJSONObject: command) else { return }
-        inputPipe.fileHandleForWriting.write(data)
-        inputPipe.fileHandleForWriting.write(Data([0x0A]))
+        do {
+            try inputPipe.fileHandleForWriting.write(contentsOf: data + Data([0x0A]))
+        } catch {
+            disconnect(reason: error.localizedDescription)
+            onTermination?(error.localizedDescription)
+        }
     }
 
     private func consume(_ data: Data) {
@@ -640,8 +675,9 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
             guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
             if object["type"] as? String == "response" {
                 if let id = object["id"] as? String,
-                   let callback = pendingResponses.removeValue(forKey: id) {
-                    callback(object)
+                   let response = pendingResponses.removeValue(forKey: id) {
+                    response.timeout.cancel()
+                    response.completion(object)
                 }
                 if object["success"] as? Bool == false {
                     onError?(object["error"] as? String ?? "Pi RPC command failed")
@@ -655,11 +691,11 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         }
     }
 
-    private static func responseSucceeded(_ response: [String: Any]) -> Bool {
+    nonisolated private static func responseSucceeded(_ response: [String: Any]) -> Bool {
         (response["success"] as? Bool) == true
     }
 
-    static func parseEvent(_ object: [String: Any]) -> PiStreamEvent? {
+    nonisolated static func parseEvent(_ object: [String: Any]) -> PiStreamEvent? {
         guard let type = object["type"] as? String else { return nil }
 
         var delta: String?
@@ -731,7 +767,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         )
     }
 
-    private static func parseUIRequest(_ object: [String: Any]) -> PiUIRequest? {
+    nonisolated private static func parseUIRequest(_ object: [String: Any]) -> PiUIRequest? {
         guard let id = object["id"] as? String,
               let method = object["method"] as? String else { return nil }
         return PiUIRequest(
@@ -745,7 +781,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         )
     }
 
-    private static func parseChatMessage(_ object: [String: Any]) -> PiChatMessage? {
+    nonisolated private static func parseChatMessage(_ object: [String: Any]) -> PiChatMessage? {
         let message = object["message"] as? [String: Any] ?? object
         guard let role = message["role"] as? String else { return nil }
         let text = parseContent(message["content"]) ?? ""
@@ -753,7 +789,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         return PiChatMessage(id: object["id"] as? String ?? UUID().uuidString, role: role, text: text, isStreaming: false)
     }
 
-    private static func parseContent(_ value: Any?) -> String? {
+    nonisolated private static func parseContent(_ value: Any?) -> String? {
         if let text = value as? String { return text }
         if let blocks = value as? [[String: Any]] {
             let text = blocks.compactMap { block -> String? in
@@ -765,7 +801,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         return nil
     }
 
-    private static func parseUsage(_ value: Any?) -> SessionUsage? {
+    nonisolated private static func parseUsage(_ value: Any?) -> SessionUsage? {
         guard let usage = value as? [String: Any] else { return nil }
         let costObject = usage["cost"] as? [String: Any]
         return SessionUsage(
@@ -777,7 +813,7 @@ final class PiRPCClient: NSObject, @unchecked Sendable {
         )
     }
 
-    private static func jsonString(_ value: Any?) -> String? {
+    nonisolated private static func jsonString(_ value: Any?) -> String? {
         guard let value,
               JSONSerialization.isValidJSONObject(value),
               let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),

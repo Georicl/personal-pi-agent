@@ -86,6 +86,22 @@ enum PiActivityState: Sendable {
     case failed
 }
 
+/// Pi can execute several turns, retries and continuations for one user task.
+struct PiRunLifecycle {
+    enum Phase { case idle, running, waiting }
+    private(set) var phase: Phase = .idle
+    var isActive: Bool { phase != .idle }
+
+    mutating func receive(_ event: String) {
+        switch event {
+        case "agent_start", "turn_start", "tool_execution_start", "message_update": phase = .running
+        case "extension_ui_request": phase = .waiting
+        case "agent_settled", "disconnected": phase = .idle
+        default: break
+        }
+    }
+}
+
 enum PiProviderAccountIntent: String, Sendable {
     case manage
     case login
@@ -175,7 +191,7 @@ private struct PiCatalogSnapshot: Sendable {
     let workspaces: [PiWorkspace]
 }
 
-enum PiConnectionState {
+enum PiConnectionState: Equatable {
     case ready
     case connecting
     case connected
@@ -256,6 +272,8 @@ final class AppState: ObservableObject {
     private var activeTaskId: String?
     private var isRefreshingCatalog = false
     private var needsCatalogRefresh = false
+    private var runLifecycle = PiRunLifecycle()
+    private var connectionRevision = UUID()
 
     let piClient = PiRPCClient()
     let usageStore = AccountUsageStore()
@@ -302,81 +320,69 @@ final class AppState: ObservableObject {
     }
 
     func connectPi() {
-        guard !isPiRunning else { return }
+        guard !isPiRunning, connectionState != .connecting else { return }
+        connectionRevision = UUID()
+        let revision = connectionRevision
         connectionState = .connecting
         piClient.onEvent = { [weak self] event in
-            Task { @MainActor in
-                self?.handle(event)
-            }
+            guard let self, self.connectionRevision == revision else { return }
+            self.handle(event)
         }
         piClient.onUIRequest = { [weak self] request in
-            Task { @MainActor in
-                guard let self else { return }
-                self.uiRequest = request
-                self.taskStore.update(
-                    id: self.activeTaskId,
-                    state: .waiting,
-                    detail: request.title.isEmpty ? "Waiting for input" : request.title
-                )
-            }
+            guard let self, self.connectionRevision == revision else { return }
+            self.runLifecycle.receive("extension_ui_request")
+            self.uiRequest = request
+            self.taskStore.update(
+                id: self.activeTaskId,
+                state: .waiting,
+                detail: request.title.isEmpty ? "Waiting for input" : request.title
+            )
         }
         piClient.onError = { [weak self] message in
-            Task { @MainActor in
-                guard let self else { return }
-                self.isGenerating = false
-                self.agentStatus = message
-                self.taskStore.update(
-                    id: self.activeTaskId,
-                    state: .finished,
-                    detail: message,
-                    unread: true
-                )
-            }
+            guard let self, self.connectionRevision == revision else { return }
+            self.agentStatus = message
         }
         piClient.onTermination = { [weak self] message in
-            Task { @MainActor in
-                guard let self else { return }
-                self.isPiRunning = false
-                self.isGenerating = false
-                self.connectionState = .unavailable(message)
-                self.agentStatus = message
-                self.taskStore.update(
-                    id: self.activeTaskId,
-                    state: .finished,
-                    detail: message,
-                    unread: true
-                )
-            }
+            guard let self, self.connectionRevision == revision else { return }
+            self.runLifecycle.receive("disconnected")
+            self.isPiRunning = false
+            self.isGenerating = false
+            self.connectionState = .unavailable(message)
+            self.agentStatus = message
+            self.taskStore.update(
+                id: self.activeTaskId,
+                state: .finished,
+                detail: message,
+                unread: true
+            )
         }
         piClient.start(
             workingDirectory: activeWorkingDirectory,
             projectTrusted: true
         ) { [weak self] success, message in
-            Task { @MainActor in
-                guard let self else { return }
-                self.isPiRunning = success
-                self.connectionState = success ? .connected : .unavailable(message)
-                if success {
-                    self.sessionModel = self.piClient.configuredModelLabel(for: self.activeWorkingDirectory) ?? self.sessionModel
-                    self.usageStore.refresh()
-                    if self.pendingSession == nil && !self.pendingNewSession {
-                        self.reloadSession()
-                    }
-                    self.loadModels()
-                    self.refreshCommands()
-                    self.refreshSavedSessions()
-                    if let pendingPrompt = self.pendingPrompt {
-                        self.pendingPrompt = nil
-                        self.send(text: pendingPrompt)
-                    }
-                    if self.pendingNewSession {
-                        self.pendingNewSession = false
-                        self.createNewSession()
-                    }
-                    if let pendingSession = self.pendingSession {
-                        self.pendingSession = nil
-                        self.switchSession(pendingSession)
-                    }
+            guard let self, self.connectionRevision == revision else { return }
+            self.isPiRunning = success
+            self.connectionState = success ? .connected : .unavailable(message)
+            if success {
+                self.sessionModel = self.piClient.configuredModelLabel(for: self.activeWorkingDirectory) ?? self.sessionModel
+                self.usageStore.refresh()
+                if self.pendingSession == nil && !self.pendingNewSession {
+                    self.reloadSession()
+                }
+                self.loadModels()
+                self.refreshCommands()
+                self.refreshSavedSessions()
+                if let pendingPrompt = self.pendingPrompt {
+                    self.pendingPrompt = nil
+                    self.send(text: pendingPrompt)
+                }
+                if self.pendingNewSession {
+                    self.pendingNewSession = false
+                    self.createNewSession()
+                }
+                if let pendingSession = self.pendingSession {
+                    self.pendingSession = nil
+                    self.switchSession(pendingSession)
                 }
             }
         }
@@ -416,43 +422,39 @@ final class AppState: ObservableObject {
             workingDirectory: activeWorkingDirectory,
             projectTrusted: true
         ) { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                if success {
-                    self.activeTaskId = nil
-                    self.sessionId = nil
-                    self.messages = []
-                    self.activities = []
-                    self.sessionName = "New session"
-                    self.sessionFile = nil
-                    self.sessionMessageCount = 0
-                    self.figureArtifactStore.selectLatest(
-                        sessionId: nil,
-                        cwd: self.activeWorkingDirectory
-                    )
-                    self.agentStatus = "Ready"
-                    self.reloadSession()
-                    self.refreshSavedSessions()
-                } else {
-                    self.agentStatus = "Unable to create session"
-                }
+            guard let self else { return }
+            if success {
+                self.activeTaskId = nil
+                self.sessionId = nil
+                self.messages = []
+                self.activities = []
+                self.sessionName = "New session"
+                self.sessionFile = nil
+                self.sessionMessageCount = 0
+                self.figureArtifactStore.selectLatest(
+                    sessionId: nil,
+                    cwd: self.activeWorkingDirectory
+                )
+                self.agentStatus = "Ready"
+                self.reloadSession()
+                self.refreshSavedSessions()
+            } else {
+                self.agentStatus = "Unable to create session"
             }
         }
     }
 
     func stopGeneration() {
         piClient.abort { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                self.agentStatus = success ? "Stopped" : "Unable to stop"
-                self.isGenerating = false
-                self.taskStore.update(
-                    id: self.activeTaskId,
-                    state: .finished,
-                    detail: success ? "Stopped" : "Unable to stop",
-                    unread: true
-                )
-            }
+            guard let self else { return }
+            self.agentStatus = success ? "Stopped" : "Unable to stop"
+            self.isGenerating = false
+            self.taskStore.update(
+                id: self.activeTaskId,
+                state: .finished,
+                detail: success ? "Stopped" : "Unable to stop",
+                unread: true
+            )
         }
     }
 
@@ -472,11 +474,9 @@ final class AppState: ObservableObject {
         guard isPiRunning else { return }
         agentStatus = "Compacting…"
         piClient.compact(customInstructions: customInstructions) { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                self.agentStatus = success ? "Compacted" : "Compaction failed"
-                self.reloadSession()
-            }
+            guard let self else { return }
+            self.agentStatus = success ? "Compacted" : "Compaction failed"
+            self.reloadSession()
         }
     }
 
@@ -490,23 +490,21 @@ final class AppState: ObservableObject {
         }
         agentStatus = "Loading session…"
         piClient.switchSession(path: session.path) { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                if success {
-                    self.sessionName = session.title
-                    self.sessionId = session.id
-                    self.figureArtifactStore.selectLatest(
-                        sessionId: session.id,
-                        cwd: session.cwd
-                    )
-                    self.activeTaskId = self.taskStore.taskId(for: session.id)
-                    self.messages = []
-                    self.activities = []
-                    self.reloadSession(loadMessages: true)
-                    self.agentStatus = "Ready"
-                } else {
-                    self.agentStatus = "Unable to load session"
-                }
+            guard let self else { return }
+            if success {
+                self.sessionName = session.title
+                self.sessionId = session.id
+                self.figureArtifactStore.selectLatest(
+                    sessionId: session.id,
+                    cwd: session.cwd
+                )
+                self.activeTaskId = self.taskStore.taskId(for: session.id)
+                self.messages = []
+                self.activities = []
+                self.reloadSession(loadMessages: true)
+                self.agentStatus = "Ready"
+            } else {
+                self.agentStatus = "Unable to load session"
             }
         }
     }
@@ -547,14 +545,12 @@ final class AppState: ObservableObject {
         isSessionUtilityLoading = true
         sessionUtilityRequest = PiSessionUtilityRequest(kind: .tree)
         piClient.requestSessionTree { [weak self] tree, leafId in
-            Task { @MainActor in
-                guard let self else { return }
-                self.sessionTree = tree
-                self.sessionTreeLeafId = leafId
-                self.isSessionUtilityLoading = false
-                if tree.isEmpty && self.sessionMessageCount > 0 {
-                    self.sessionUtilityError = "Pi returned an empty session tree"
-                }
+            guard let self else { return }
+            self.sessionTree = tree
+            self.sessionTreeLeafId = leafId
+            self.isSessionUtilityLoading = false
+            if tree.isEmpty && self.sessionMessageCount > 0 {
+                self.sessionUtilityError = "Pi returned an empty session tree"
             }
         }
     }
@@ -570,13 +566,11 @@ final class AppState: ObservableObject {
         isSessionUtilityLoading = true
         sessionUtilityRequest = PiSessionUtilityRequest(kind: .fork)
         piClient.requestForkMessages { [weak self] messages in
-            Task { @MainActor in
-                guard let self else { return }
-                self.forkMessages = messages
-                self.isSessionUtilityLoading = false
-                if messages.isEmpty {
-                    self.sessionUtilityError = "No user message is available to fork from"
-                }
+            guard let self else { return }
+            self.forkMessages = messages
+            self.isSessionUtilityLoading = false
+            if messages.isEmpty {
+                self.sessionUtilityError = "No user message is available to fork from"
             }
         }
     }
@@ -591,17 +585,15 @@ final class AppState: ObservableObject {
             summarize: summarize,
             customInstructions: customInstructions.trimmingCharacters(in: .whitespacesAndNewlines).nonEmptyValue
         ) { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                self.isSessionUtilityLoading = false
-                if success {
-                    self.sessionUtilityRequest = nil
-                    self.agentStatus = "Session branch selected"
-                    self.reloadSession(loadMessages: true)
-                } else {
-                    self.sessionUtilityError = "Unable to navigate the session tree"
-                    self.agentStatus = self.sessionUtilityError
-                }
+            guard let self else { return }
+            self.isSessionUtilityLoading = false
+            if success {
+                self.sessionUtilityRequest = nil
+                self.agentStatus = "Session branch selected"
+                self.reloadSession(loadMessages: true)
+            } else {
+                self.sessionUtilityError = "Unable to navigate the session tree"
+                self.agentStatus = self.sessionUtilityError
             }
         }
     }
@@ -612,25 +604,23 @@ final class AppState: ObservableObject {
         sessionUtilityError = ""
         agentStatus = "Forking session…"
         piClient.forkSession(entryId: entryId) { [weak self] result in
-            Task { @MainActor in
-                guard let self else { return }
-                self.isSessionUtilityLoading = false
-                guard let result, !result.cancelled else {
-                    self.sessionUtilityError = result?.cancelled == true
-                        ? "Session fork was cancelled"
-                        : "Unable to fork session"
-                    self.agentStatus = self.sessionUtilityError
-                    return
-                }
-                self.sessionUtilityRequest = nil
-                self.activeTaskId = nil
-                self.messages = []
-                self.activities = []
-                self.composerText = result.text
-                self.agentStatus = result.text.isEmpty ? "Session forked" : "Session forked · original prompt restored"
-                self.reloadSession(loadMessages: true)
-                self.refreshSavedSessions()
+            guard let self else { return }
+            self.isSessionUtilityLoading = false
+            guard let result, !result.cancelled else {
+                self.sessionUtilityError = result?.cancelled == true
+                    ? "Session fork was cancelled"
+                    : "Unable to fork session"
+                self.agentStatus = self.sessionUtilityError
+                return
             }
+            self.sessionUtilityRequest = nil
+            self.activeTaskId = nil
+            self.messages = []
+            self.activities = []
+            self.composerText = result.text
+            self.agentStatus = result.text.isEmpty ? "Session forked" : "Session forked · original prompt restored"
+            self.reloadSession(loadMessages: true)
+            self.refreshSavedSessions()
         }
     }
 
@@ -641,19 +631,17 @@ final class AppState: ObservableObject {
         }
         agentStatus = "Cloning session…"
         piClient.cloneSession { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                guard success else {
-                    self.agentStatus = "Unable to clone session"
-                    return
-                }
-                self.activeTaskId = nil
-                self.messages = []
-                self.activities = []
-                self.agentStatus = "Session cloned"
-                self.reloadSession(loadMessages: true)
-                self.refreshSavedSessions()
+            guard let self else { return }
+            guard success else {
+                self.agentStatus = "Unable to clone session"
+                return
             }
+            self.activeTaskId = nil
+            self.messages = []
+            self.activities = []
+            self.agentStatus = "Session cloned"
+            self.reloadSession(loadMessages: true)
+            self.refreshSavedSessions()
         }
     }
 
@@ -664,15 +652,13 @@ final class AppState: ObservableObject {
         }
         agentStatus = "Exporting session…"
         piClient.exportHTML(outputPath: outputPath?.nonEmptyValue) { [weak self] path in
-            Task { @MainActor in
-                guard let self else { return }
-                guard let path else {
-                    self.agentStatus = "Unable to export session"
-                    return
-                }
-                self.agentStatus = "Exported session"
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            guard let self else { return }
+            guard let path else {
+                self.agentStatus = "Unable to export session"
+                return
             }
+            self.agentStatus = "Exported session"
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
         }
     }
 
@@ -682,16 +668,14 @@ final class AppState: ObservableObject {
             return
         }
         piClient.requestLastAssistantText { [weak self] text in
-            Task { @MainActor in
-                guard let self else { return }
-                guard let text, !text.isEmpty else {
-                    self.agentStatus = "No assistant reply to copy"
-                    return
-                }
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                self.agentStatus = "Last assistant reply copied"
+            guard let self else { return }
+            guard let text, !text.isEmpty else {
+                self.agentStatus = "No assistant reply to copy"
+                return
             }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            self.agentStatus = "Last assistant reply copied"
         }
     }
 
@@ -702,14 +686,12 @@ final class AppState: ObservableObject {
         }
         agentStatus = "Reloading Pi resources…"
         piClient.reloadResources { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                self.agentStatus = success ? "Pi resources reloaded" : "Unable to reload Pi resources"
-                if success {
-                    self.reloadSession(loadMessages: true)
-                    self.loadModels()
-                    self.refreshCommands()
-                }
+            guard let self else { return }
+            self.agentStatus = success ? "Pi resources reloaded" : "Unable to reload Pi resources"
+            if success {
+                self.reloadSession(loadMessages: true)
+                self.loadModels()
+                self.refreshCommands()
             }
         }
     }
@@ -718,15 +700,13 @@ final class AppState: ObservableObject {
         guard isPiRunning else { return }
         agentStatus = "Switching model…"
         piClient.setModel(provider: model.provider, modelId: model.modelId) { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                if success {
-                    self.sessionModel = model.identity
-                    self.agentStatus = "Ready"
-                    self.loadAvailableThinkingLevels()
-                } else {
-                    self.agentStatus = "Unable to switch model"
-                }
+            guard let self else { return }
+            if success {
+                self.sessionModel = model.identity
+                self.agentStatus = "Ready"
+                self.loadAvailableThinkingLevels()
+            } else {
+                self.agentStatus = "Unable to switch model"
             }
         }
     }
@@ -734,14 +714,12 @@ final class AppState: ObservableObject {
     func selectThinkingLevel(_ level: String) {
         guard isPiRunning else { return }
         piClient.setThinkingLevel(level) { [weak self] success in
-            Task { @MainActor in
-                guard let self else { return }
-                if success {
-                    self.thinkingLevel = level
-                    self.agentStatus = "Ready"
-                } else {
-                    self.agentStatus = "Unable to change thinking level"
-                }
+            guard let self else { return }
+            if success {
+                self.thinkingLevel = level
+                self.agentStatus = "Ready"
+            } else {
+                self.agentStatus = "Unable to change thinking level"
             }
         }
     }
@@ -760,57 +738,58 @@ final class AppState: ObservableObject {
         taskStore.update(id: activeTaskId, state: .running, detail: "Pi is working")
         messages.append(PiChatMessage(id: UUID().uuidString, role: "user", text: text, isStreaming: false))
         activities = []
+        runLifecycle.receive("agent_start")
         isGenerating = true
         agentStatus = "Thinking…"
-        piClient.sendPrompt(text)
+        let revision = connectionRevision
+        piClient.sendPrompt(text) { [weak self] accepted, error in
+            guard let self, self.connectionRevision == revision, !accepted else { return }
+            self.runLifecycle.receive("disconnected")
+            self.isGenerating = false
+            self.agentStatus = error ?? "Prompt rejected"
+            self.taskStore.update(id: self.activeTaskId, state: .finished,
+                                  detail: self.agentStatus, unread: true)
+        }
     }
 
     private func reloadSession(loadMessages: Bool = true) {
         piClient.requestState { [weak self] state in
-            Task { @MainActor in
-                guard let self, let state else { return }
-                self.sessionId = state.sessionId
-                self.figureArtifactStore.selectLatest(
-                    sessionId: state.sessionId,
-                    cwd: self.activeWorkingDirectory
-                )
-                self.sessionFile = state.sessionFile
-                self.sessionMessageCount = state.messageCount
-                if let sessionId = state.sessionId {
-                    self.taskStore.bind(id: self.activeTaskId, to: sessionId)
-                    if self.activeTaskId == nil {
-                        self.activeTaskId = self.taskStore.taskId(for: sessionId)
-                    }
+            guard let self, let state else { return }
+            self.sessionId = state.sessionId
+            self.figureArtifactStore.selectLatest(
+                sessionId: state.sessionId,
+                cwd: self.activeWorkingDirectory
+            )
+            self.sessionFile = state.sessionFile
+            self.sessionMessageCount = state.messageCount
+            if let sessionId = state.sessionId {
+                self.taskStore.bind(id: self.activeTaskId, to: sessionId)
+                if self.activeTaskId == nil {
+                    self.activeTaskId = self.taskStore.taskId(for: sessionId)
                 }
-                if let sessionName = state.sessionName {
-                    self.sessionName = sessionName
-                }
-                self.sessionModel = state.model ?? "Model not selected"
-                self.thinkingLevel = state.thinkingLevel ?? self.thinkingLevel
-                self.agentStatus = state.isStreaming ? "Thinking…" : "Ready"
-                self.loadAvailableThinkingLevels()
             }
+            if let sessionName = state.sessionName {
+                self.sessionName = sessionName
+            }
+            self.sessionModel = state.model ?? "Model not selected"
+            self.thinkingLevel = state.thinkingLevel ?? self.thinkingLevel
+            self.agentStatus = state.isStreaming ? "Thinking…" : "Ready"
+            self.loadAvailableThinkingLevels()
         }
         if loadMessages {
             piClient.requestMessages { [weak self] messages in
-                Task { @MainActor in
-                    self?.messages = messages
-                }
+                self?.messages = messages
             }
         }
         piClient.requestSessionStats { [weak self] usage in
             guard let usage else { return }
-            Task { @MainActor in
-                self?.usageStore.updateSessionUsage(usage)
-            }
+            self?.usageStore.updateSessionUsage(usage)
         }
     }
 
     private func loadModels() {
         piClient.requestAvailableModels { [weak self] models in
-            Task { @MainActor in
-                self?.availableModels = models
-            }
+            self?.availableModels = models
         }
     }
 
@@ -820,9 +799,7 @@ final class AppState: ObservableObject {
             return
         }
         piClient.requestAvailableThinkingLevels { [weak self] levels in
-            Task { @MainActor in
-                self?.availableThinkingLevels = levels
-            }
+            self?.availableThinkingLevels = levels
         }
     }
 
@@ -843,12 +820,10 @@ final class AppState: ObservableObject {
             return
         }
         piClient.requestCommands { [weak self] commands in
-            Task { @MainActor in
-                guard let self else { return }
-                let nativeNames = Set(Self.nativeCommands.map(\.name))
-                self.availableCommands = Self.nativeCommands + commands.filter {
-                    !nativeNames.contains($0.name) && !$0.name.hasPrefix("__personal_pi_")
-                }
+            guard let self else { return }
+            let nativeNames = Set(Self.nativeCommands.map(\.name))
+            self.availableCommands = Self.nativeCommands + commands.filter {
+                !nativeNames.contains($0.name) && !$0.name.hasPrefix("__personal_pi_")
             }
         }
     }
@@ -918,12 +893,10 @@ final class AppState: ObservableObject {
                 return true
             }
             piClient.setSessionName(argument) { [weak self] success in
-                Task { @MainActor in
-                    guard let self else { return }
-                    self.sessionName = success ? argument : self.sessionName
-                    self.agentStatus = success ? "Session renamed" : "Unable to rename session"
-                    if success { self.refreshSavedSessions() }
-                }
+                guard let self else { return }
+                self.sessionName = success ? argument : self.sessionName
+                self.agentStatus = success ? "Session renamed" : "Unable to rename session"
+                if success { self.refreshSavedSessions() }
             }
         case "login":
             selectedSection = .settings
@@ -1215,6 +1188,7 @@ final class AppState: ObservableObject {
     }
 
     private func restartPiForScope() {
+        connectionRevision = UUID()
         if isGenerating {
             taskStore.update(
                 id: activeTaskId,
@@ -1230,7 +1204,11 @@ final class AppState: ObservableObject {
         uiRequest = nil
         availableCommands = Self.nativeCommands
         availableThinkingLevels = ["off"]
-        guard isPiRunning else {
+        runLifecycle.receive("disconnected")
+        isGenerating = false
+        sessionFile = nil
+        isSessionUtilityLoading = false
+        guard isPiRunning || piClient.processIdentifier != nil else {
             resetIdleConnectionState()
             return
         }
@@ -1321,6 +1299,8 @@ final class AppState: ObservableObject {
     }
 
     private func handle(_ event: PiStreamEvent) {
+        runLifecycle.receive(event.type)
+        isGenerating = runLifecycle.isActive
         switch event.type {
         case "agent_start", "turn_start":
             isGenerating = true
@@ -1384,20 +1364,16 @@ final class AppState: ObservableObject {
             agentStatus = "Compacting…"
         case "compaction_end":
             agentStatus = "Compacted"
-        case "agent_settled", "turn_end":
+        case "agent_settled":
             isGenerating = false
             agentStatus = "Ready"
             taskStore.update(id: activeTaskId, state: .finished, detail: "Completed", unread: true)
             piClient.requestSessionStats { [weak self] usage in
                 guard let usage else { return }
-                Task { @MainActor in
-                    self?.usageStore.updateSessionUsage(usage)
-                }
+                self?.usageStore.updateSessionUsage(usage)
             }
         case "extension_error":
-            isGenerating = false
             agentStatus = "Extension error"
-            taskStore.update(id: activeTaskId, state: .finished, detail: "Extension error", unread: true)
         default:
             break
         }
