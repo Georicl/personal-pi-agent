@@ -92,7 +92,9 @@ final class KnowledgeLibraryStore: ObservableObject {
         inventory?.files.first { $0.relativePath == selectedPath }
     }
     var canPublish: Bool {
-        guard let file = selectedFile, let index = file.index else { return false }
+        guard let file = selectedFile, let index = file.index,
+              let preview = document?.document, preview.id == index.documentId,
+              preview.contentHash?.isEmpty == false, !isReading else { return false }
         return ["drafts", "entries"].contains(file.category) && index.status == "draft" &&
             index.stale != true && index.error == nil && !isWorking
     }
@@ -257,17 +259,20 @@ final class KnowledgeLibraryStore: ObservableObject {
     }
 
     func publishSelectedCard() {
-        guard canPublish, let id = selectedFile?.index?.documentId else { return }
+        guard canPublish, let id = selectedFile?.index?.documentId,
+              let confirmedHash = document?.document.contentHash else { return }
         beginWork("Publishing knowledge card…")
         var payload = request("publish")
         payload.documentId = id
         payload.userConfirmed = true // Called by the user's explicit publish button.
+        payload.expectedContentHash = confirmedHash
         run(payload) { [weak self] (result: Result<KnowledgeDocumentResponse, Error>) in
             guard let self else { return }
             self.isWorking = false
             switch result {
-            case .success:
-                self.status = "Knowledge card published"
+            case .success(let response):
+                self.status = response.recoveryPath.map { "Knowledge card published · Original retained at \($0)" }
+                    ?? "Knowledge card published"
                 self.selectFile(nil)
                 self.reload()
             case .failure(let failure): self.error = failure.localizedDescription

@@ -260,31 +260,59 @@ final class AppState: ObservableObject {
     @Published var providerAccountRequest: PiProviderAccountRequest?
     @Published var isArtifactSidebarVisible = false
 
-    private var pendingPrompt: String?
+    private struct PendingPrompt {
+        let text: String
+        let directory: String
+    }
+    private var pendingPrompt: PendingPrompt?
     private var pendingNewSession = false
     private var pendingSession: PiSavedSession?
+    private var startupSession: PiSavedSession?
     private var pendingSessionReference: String?
     private var activeTaskId: String?
     private var isRefreshingCatalog = false
     private var needsCatalogRefresh = false
-    let sessionCoordinator = PiSessionCoordinator()
+    let sessionCoordinator: PiSessionCoordinator
+    private var sessionRevision = UUID()
+    private(set) var isSessionTransitioning = false
+    private var transitionEvents: [PiStreamEvent] = []
+    private var draftsByDirectory: [String: String] = [:]
+    private var runRevision = UUID()
+    private var commandRevision: UUID?
+    private var reconciliationRevision = UUID()
+    private var modelEventRevision = UUID()
+    private var hasActiveModelTask = false
+    private var runCancelled = false
+    private var lastSubmittedText = ""
+    private let refreshAccounts: Bool
     private var runtimeObservation: AnyCancellable?
     private var connectionRevision: UUID { sessionCoordinator.revision }
 
     var piClient: PiRPCClient { sessionCoordinator.client }
     let usageStore = AccountUsageStore()
-    let taskStore = PiTaskStore()
+    let taskStore: PiTaskStore
     let figureArtifactStore: FigureArtifactStore
     let knowledgeStore: KnowledgeLibraryStore
     let piRootDirectory: String
     let globalChatDirectory: String
     let globalKnowledgeDirectory: String
 
-    init() {
-        let piRoot = PersonalPiRuntimeEnvironment.piRootURL
+    /// Build the MainActor-owned client inside the initializer, not in a default
+    /// argument thunk. Swift 6.1.2 crashes lowering AppState() in the app
+    /// delegate's stored-property initializer when that default is isolated.
+    convenience init() {
+        self.init(client: PiRPCClient())
+    }
+
+    init(client: PiRPCClient, runtimeContext: PiRuntimeContext = .current,
+         workspacePaths: [String]? = nil, refreshAccounts: Bool = true) {
+        sessionCoordinator = PiSessionCoordinator(client: client)
+        self.refreshAccounts = refreshAccounts
+        let piRoot = runtimeContext.piRoot
+        taskStore = PiTaskStore(storageURL: runtimeContext.agentDirectory.appendingPathComponent("personal-pi-tasks.json"))
         knowledgeStore = KnowledgeLibraryStore(piRoot: piRoot)
         figureArtifactStore = FigureArtifactStore(
-            storageURL: PiRuntimeContext.current.agentDirectory
+            storageURL: runtimeContext.agentDirectory
                 .appendingPathComponent("personal-pi-figure-artifacts.json")
         )
         piRootDirectory = piRoot.path
@@ -293,7 +321,7 @@ final class AppState: ObservableObject {
         Self.ensureDirectory(at: globalChatDirectory)
         Self.ensureDirectory(at: globalKnowledgeDirectory)
 
-        let registeredPaths = Self.discoverWorkspacePaths()
+        let registeredPaths = (workspacePaths ?? Self.discoverWorkspacePaths()).map(Self.canonicalDirectory)
         if registeredPaths.isEmpty {
             workspaceScope = .global
             workspace = PiWorkspaceInspector.placeholder(path: globalChatDirectory)
@@ -308,6 +336,7 @@ final class AppState: ObservableObject {
             currentProjectPath = workspace.path
         }
         figureArtifactStore.selectLatest(sessionId: nil, cwd: currentProjectPath)
+        configureKnowledge()
 
         runtimeObservation = sessionCoordinator.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
@@ -320,20 +349,34 @@ final class AppState: ObservableObject {
 
     func connectPi() {
         guard !isPiRunning, connectionState != .connecting else { return }
+        let resuming = startupSession
         let revision = sessionCoordinator.beginConnection()
         piClient.onEvent = { [weak self] event in
             guard let self, self.connectionRevision == revision else { return }
+            if self.isSessionTransitioning {
+                self.transitionEvents.append(event)
+                return
+            }
             self.handle(event)
         }
         piClient.onUIRequest = { [weak self] request in
             guard let self, self.connectionRevision == revision else { return }
+            guard ["select", "confirm", "input", "editor"].contains(request.method) else {
+                if request.method == "notify" {
+                    self.agentStatus = request.message
+                    self.upsertActivity(id: request.id, toolName: "Notification",
+                                        detail: request.message, state: .completed)
+                }
+                return
+            }
             self.sessionCoordinator.receive("extension_ui_request")
             self.uiRequest = request
             self.taskStore.update(
-                id: self.activeTaskId,
+                id: self.hasActiveModelTask ? self.activeTaskId : nil,
                 state: .waiting,
                 detail: request.title.isEmpty ? "Waiting for input" : request.title
             )
+            if let command = self.commandRevision { self.reconcileCommandCompletion(request: command) }
         }
         piClient.onError = { [weak self] message in
             guard let self, self.connectionRevision == revision else { return }
@@ -346,55 +389,74 @@ final class AppState: ObservableObject {
             self.isGenerating = false
             self.connectionState = .unavailable(message)
             self.agentStatus = message
-            self.taskStore.update(
-                id: self.activeTaskId,
-                state: .finished,
-                detail: message,
-                unread: true
-            )
+            self.finishModelTask(detail: message)
+            self.isSessionTransitioning = false
+            self.transitionEvents = []
+            self.uiRequest = nil
         }
         piClient.start(
             workingDirectory: activeWorkingDirectory,
-            projectTrusted: true
+            projectTrusted: true,
+            sessionPath: resuming?.path
         ) { [weak self] success, message in
             guard let self, self.connectionRevision == revision else { return }
             self.isPiRunning = success
             self.connectionState = success ? .connected : .unavailable(message)
+            if resuming != nil {
+                self.isSessionTransitioning = false
+                let startupEvents = self.transitionEvents
+                self.transitionEvents = []
+                if success {
+                    for event in startupEvents { self.handle(event) }
+                }
+            }
+            if !success { self.agentStatus = message }
             if success {
+                self.startupSession = nil
                 self.sessionModel = self.piClient.configuredModelLabel(for: self.activeWorkingDirectory) ?? self.sessionModel
-                self.usageStore.refresh()
+                if self.refreshAccounts { self.usageStore.refresh() }
                 if self.pendingSession == nil && !self.pendingNewSession {
                     self.reloadSession()
                 }
                 self.loadModels()
                 self.refreshCommands()
                 self.refreshSavedSessions()
-                if let pendingPrompt = self.pendingPrompt {
-                    self.pendingPrompt = nil
-                    self.send(text: pendingPrompt)
-                }
-                if self.pendingNewSession {
-                    self.pendingNewSession = false
-                    self.createNewSession()
-                }
                 if let pendingSession = self.pendingSession {
                     self.pendingSession = nil
                     self.switchSession(pendingSession)
+                } else if self.pendingNewSession {
+                    self.pendingNewSession = false
+                    self.createNewSession()
+                } else if let pendingPrompt = self.pendingPrompt {
+                    self.pendingPrompt = nil
+                    if pendingPrompt.directory == Self.canonicalDirectory(self.activeWorkingDirectory) {
+                        self.send(text: pendingPrompt.text)
+                    }
                 }
             }
         }
     }
 
     func sendPrompt() {
+        guard !isSessionTransitioning, pendingSession == nil, !pendingNewSession else {
+            agentStatus = "Wait for the session change before sending"
+            return
+        }
         let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let draft = composerText
         composerText = ""
         if executeNativeCommand(text) {
             return
         }
+        guard !isGenerating, pendingPrompt == nil else {
+            composerText = draft
+            agentStatus = "Wait for the current request or stop it before sending"
+            return
+        }
         selectedSection = .sessions
         if !isPiRunning {
-            pendingPrompt = text
+            pendingPrompt = PendingPrompt(text: text, directory: Self.canonicalDirectory(activeWorkingDirectory))
             connectPi()
         } else {
             send(text: text)
@@ -402,6 +464,8 @@ final class AppState: ObservableObject {
     }
 
     func startNewSession() {
+        guard !isSessionTransitioning, pendingPrompt == nil else { return }
+        startupSession = nil
         selectedSection = .sessions
         guard isPiRunning else {
             pendingNewSession = true
@@ -414,13 +478,25 @@ final class AppState: ObservableObject {
     }
 
     private func createNewSession() {
+        guard !isSessionTransitioning else { return }
+        isSessionTransitioning = true
+        transitionEvents = []
+        sessionRevision = UUID()
+        commandRevision = nil
+        reconciliationRevision = UUID()
+        let revision = sessionRevision
         agentStatus = "Creating session…"
         piClient.newSession(
             workingDirectory: activeWorkingDirectory,
             projectTrusted: true
-        ) { [weak self] success in
-            guard let self else { return }
-            if success {
+        ) { [weak self] result in
+            guard let self, self.sessionRevision == revision else { return }
+            self.isSessionTransitioning = false
+            if result == .changed {
+                self.transitionEvents = []
+                self.finishModelTask(detail: "Cancelled by session change")
+                self.sessionCoordinator.receive("disconnected")
+                self.runRevision = UUID()
                 self.activeTaskId = nil
                 self.sessionId = nil
                 self.messages = []
@@ -436,37 +512,42 @@ final class AppState: ObservableObject {
                 self.reloadSession()
                 self.refreshSavedSessions()
             } else {
-                self.agentStatus = "Unable to create session"
+                self.replayCancelledTransition()
+                self.sessionCoordinator.receive(self.hasActiveModelTask ? "command_start" : "command_finished")
+                self.agentStatus = result == .cancelled ? "Session creation cancelled" : "Unable to create session"
             }
         }
     }
 
     func stopGeneration() {
+        runCancelled = true
+        let revision = runRevision
         piClient.abort { [weak self] success in
-            guard let self else { return }
+            guard let self, self.runRevision == revision else { return }
             self.agentStatus = success ? "Stopped" : "Unable to stop"
-            guard success else { return }
+            guard success else { self.runCancelled = false; return }
             self.sessionCoordinator.receive("disconnected")
             self.isGenerating = false
-            self.taskStore.update(
-                id: self.activeTaskId,
-                state: .finished,
-                detail: success ? "Stopped" : "Unable to stop",
-                unread: true
-            )
+            self.uiRequest = nil
+            self.finishModelTask(detail: "Cancelled")
         }
     }
 
     func respondToUIRequest(value: String? = nil, confirmed: Bool? = nil, cancelled: Bool = false) {
         guard let request = uiRequest else { return }
         uiRequest = nil
+        if !hasActiveModelTask && (cancelled || confirmed == false) { runCancelled = true }
         piClient.respondToUIRequest(
             id: request.id,
             value: value,
             confirmed: confirmed,
             cancelled: cancelled
         )
-        taskStore.update(id: activeTaskId, state: .running, detail: "Continuing after input")
+        sessionCoordinator.receive("command_start")
+        if hasActiveModelTask {
+            taskStore.update(id: activeTaskId, state: .running, detail: "Continuing after input")
+        }
+        if let command = commandRevision { reconcileCommandCompletion(request: command) }
     }
 
     func compactSession(customInstructions: String? = nil) {
@@ -480,6 +561,13 @@ final class AppState: ObservableObject {
     }
 
     func switchSession(_ session: PiSavedSession) {
+        guard !isSessionTransitioning else { return }
+        guard !session.cwd.isEmpty else {
+            agentStatus = "Session project path is unavailable"
+            return
+        }
+        preservePendingDraft()
+        pendingNewSession = false
         guard isPiRunning else {
             pendingSession = session
             selectedSection = .sessions
@@ -487,12 +575,33 @@ final class AppState: ObservableObject {
             connectPi()
             return
         }
+        isSessionTransitioning = true
+        transitionEvents = []
+        sessionRevision = UUID()
+        commandRevision = nil
+        reconciliationRevision = UUID()
+        let revision = sessionRevision
         agentStatus = "Loading session…"
-        piClient.switchSession(path: session.path) { [weak self] success in
-            guard let self else { return }
-            if success {
+        piClient.switchSession(path: session.path) { [weak self] result in
+            guard let self, self.sessionRevision == revision else { return }
+            if result == .changed {
+                self.transitionEvents = []
+                self.finishModelTask(detail: "Cancelled by session change")
+                // Native RPC events have no session ID. A fresh process/pipe
+                // generation is the boundary; merely replacing a callback on
+                // the same pipe cannot identify late A events after B loads.
+                self.sessionCoordinator.invalidateConnection()
+                self.runRevision = UUID()
+                self.lastSubmittedText = "Resumed session"
+                self.sessionCoordinator.receive("disconnected")
+                self.uiRequest = nil
+                self.piClient.stop()
+                self.isPiRunning = false
+                self.connectionState = .ready
+                self.adoptSessionDirectory(session.cwd)
                 self.sessionName = session.title
-                self.sessionId = session.id
+                self.sessionId = nil // Published again by the resumed runtime.
+                self.sessionFile = session.path
                 self.figureArtifactStore.selectLatest(
                     sessionId: session.id,
                     cwd: session.cwd
@@ -500,12 +609,22 @@ final class AppState: ObservableObject {
                 self.activeTaskId = self.taskStore.taskId(for: session.id)
                 self.messages = []
                 self.activities = []
-                self.reloadSession(loadMessages: true)
-                self.agentStatus = "Ready"
+                self.startupSession = session
+                self.agentStatus = "Resuming session…"
+                self.connectPi()
             } else {
-                self.agentStatus = "Unable to load session"
+                self.isSessionTransitioning = false
+                self.replayCancelledTransition()
+                self.sessionCoordinator.receive(self.hasActiveModelTask ? "command_start" : "command_finished")
+                self.agentStatus = result == .cancelled ? "Session switch cancelled" : "Unable to load session"
             }
         }
+    }
+
+    private func replayCancelledTransition() {
+        let buffered = transitionEvents
+        transitionEvents = []
+        for event in buffered { handle(event) }
     }
 
     func resumeSession(matching reference: String = "") {
@@ -724,36 +843,81 @@ final class AppState: ObservableObject {
     }
 
     private func send(text: String) {
+        runRevision = UUID()
+        let request = runRevision
+        runCancelled = false
+        lastSubmittedText = text
+        // Slash commands may return without any model turn. Promote to a task
+        // only if Pi actually emits agent_start (templates/skills do so too).
+        let mayBeCommand = text.hasPrefix("/")
+        commandRevision = mayBeCommand ? request : nil
+        reconciliationRevision = UUID()
+        if !mayBeCommand { beginModelTask() }
+        messages.append(PiChatMessage(id: UUID().uuidString, role: "user", text: text, isStreaming: false))
+        activities = []
+        sessionCoordinator.receive("command_start")
+        agentStatus = mayBeCommand ? "Executing command…" : "Thinking…"
+        let revision = connectionRevision
+        piClient.sendPrompt(text) { [weak self] accepted, error in
+            guard let self, self.connectionRevision == revision, self.runRevision == request else { return }
+            guard accepted else {
+                self.sessionCoordinator.receive("command_finished")
+                self.agentStatus = error ?? "Prompt rejected"
+                self.finishModelTask(detail: self.agentStatus)
+                return
+            }
+            if mayBeCommand { self.reconcileCommandCompletion(request: request) }
+        }
+    }
+
+    private func beginModelTask() {
+        guard !hasActiveModelTask else { return }
+        hasActiveModelTask = true
         if let activeTaskId {
             taskStore.resume(id: activeTaskId)
         } else {
             activeTaskId = taskStore.beginOrResume(
                 sessionKey: sessionId ?? "pending:\(UUID().uuidString)",
-                title: String(text.prefix(100)),
+                title: String(lastSubmittedText.prefix(100)),
                 scopeName: scopeTitle,
                 workingDirectory: activeWorkingDirectory
             )
         }
         taskStore.update(id: activeTaskId, state: .running, detail: "Pi is working")
-        messages.append(PiChatMessage(id: UUID().uuidString, role: "user", text: text, isStreaming: false))
-        activities = []
-        sessionCoordinator.receive("agent_start")
-        isGenerating = true
-        agentStatus = "Thinking…"
-        let revision = connectionRevision
-        piClient.sendPrompt(text) { [weak self] accepted, error in
-            guard let self, self.connectionRevision == revision, !accepted else { return }
-            self.sessionCoordinator.receive("disconnected")
-            self.isGenerating = false
-            self.agentStatus = error ?? "Prompt rejected"
-            self.taskStore.update(id: self.activeTaskId, state: .finished,
-                                  detail: self.agentStatus, unread: true)
+    }
+
+    private func finishModelTask(detail: String) {
+        guard hasActiveModelTask else { return }
+        hasActiveModelTask = false
+        taskStore.update(id: activeTaskId, state: .finished, detail: detail, unread: true)
+    }
+
+    private func reconcileCommandCompletion(request: UUID) {
+        guard commandRevision == request, runRevision == request, !isSessionTransitioning else { return }
+        let ticket = UUID()
+        reconciliationRevision = ticket
+        let modelRevision = modelEventRevision
+        piClient.requestState { [weak self] state in
+            guard let self, self.runRevision == request,
+                  self.commandRevision == request, self.reconciliationRevision == ticket,
+                  self.modelEventRevision == modelRevision, !self.hasActiveModelTask else { return }
+            // A command may queue a user message instead of starting it inline.
+            // Only authoritative idle state can complete that command.
+            guard let state else {
+                self.sessionCoordinator.receive("command_finished")
+                self.agentStatus = "Unable to verify command completion"
+                return
+            }
+            guard state.isIdle, self.uiRequest == nil else { return }
+            self.sessionCoordinator.receive("command_finished")
+            self.agentStatus = self.runCancelled ? "Cancelled" : "Command completed"
         }
     }
 
     private func reloadSession(loadMessages: Bool = true) {
+        let revision = sessionRevision
         piClient.requestState { [weak self] state in
-            guard let self, let state else { return }
+            guard let self, self.sessionRevision == revision, let state else { return }
             self.sessionId = state.sessionId
             self.figureArtifactStore.selectLatest(
                 sessionId: state.sessionId,
@@ -777,18 +941,21 @@ final class AppState: ObservableObject {
         }
         if loadMessages {
             piClient.requestMessages { [weak self] messages in
-                self?.messages = messages
+                guard let self, self.sessionRevision == revision else { return }
+                self.messages = messages
             }
         }
         piClient.requestSessionStats { [weak self] usage in
-            guard let usage else { return }
-            self?.usageStore.updateSessionUsage(usage)
+            guard let self, self.sessionRevision == revision, let usage else { return }
+            self.usageStore.updateSessionUsage(usage)
         }
     }
 
     private func loadModels() {
+        let revision = sessionRevision
         piClient.requestAvailableModels { [weak self] models in
-            self?.availableModels = models
+            guard let self, self.sessionRevision == revision else { return }
+            self.availableModels = models
         }
     }
 
@@ -797,8 +964,10 @@ final class AppState: ObservableObject {
             availableThinkingLevels = ["off"]
             return
         }
+        let revision = sessionRevision
         piClient.requestAvailableThinkingLevels { [weak self] levels in
-            self?.availableThinkingLevels = levels
+            guard let self, self.sessionRevision == revision else { return }
+            self.availableThinkingLevels = levels
         }
     }
 
@@ -818,8 +987,9 @@ final class AppState: ObservableObject {
             availableCommands = Self.nativeCommands
             return
         }
+        let revision = sessionRevision
         piClient.requestCommands { [weak self] commands in
-            guard let self else { return }
+            guard let self, self.sessionRevision == revision else { return }
             let nativeNames = Set(Self.nativeCommands.map(\.name))
             self.availableCommands = Self.nativeCommands + commands.filter {
                 !nativeNames.contains($0.name) && !$0.name.hasPrefix("__personal_pi_")
@@ -1076,10 +1246,13 @@ final class AppState: ObservableObject {
 
     func selectWorkspace(_ selectedWorkspace: PiWorkspace) {
         guard workspaceScope != .workspace || workspace.path != selectedWorkspace.path else { return }
+        discardPendingScopeActions()
         workspaceScope = .workspace
         workspace = selectedWorkspace
         currentProject = workspace.name
         currentProjectPath = workspace.path
+        composerText = draftsByDirectory[Self.canonicalDirectory(workspace.path)] ?? ""
+        configureKnowledge()
         sessionProjectFilter = nil
         figureArtifactStore.selectLatest(sessionId: nil, cwd: selectedWorkspace.path)
         restartPiForScope()
@@ -1088,8 +1261,12 @@ final class AppState: ObservableObject {
 
     func selectGlobalScope() {
         guard workspaceScope != .global else { return }
+        discardPendingScopeActions()
         workspaceScope = .global
         currentProject = "Global Chat"
+        currentProjectPath = globalChatDirectory
+        composerText = draftsByDirectory[Self.canonicalDirectory(globalChatDirectory)] ?? ""
+        configureKnowledge()
         sessionProjectFilter = nil
         figureArtifactStore.selectLatest(sessionId: nil, cwd: globalChatDirectory)
         restartPiForScope()
@@ -1188,14 +1365,13 @@ final class AppState: ObservableObject {
 
     private func restartPiForScope() {
         sessionCoordinator.invalidateConnection()
-        if isGenerating {
-            taskStore.update(
-                id: activeTaskId,
-                state: .finished,
-                detail: "Interrupted by project switch",
-                unread: true
-            )
-        }
+        sessionRevision = UUID()
+        runRevision = UUID()
+        commandRevision = nil
+        reconciliationRevision = UUID()
+        isSessionTransitioning = false
+        transitionEvents = []
+        finishModelTask(detail: "Cancelled by context reload")
         activeTaskId = nil
         sessionId = nil
         messages = []
@@ -1215,6 +1391,47 @@ final class AppState: ObservableObject {
         isPiRunning = false
         connectionState = .ready
         connectPi()
+    }
+
+    private static func canonicalDirectory(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    private func preservePendingDraft() {
+        let directory = Self.canonicalDirectory(activeWorkingDirectory)
+        draftsByDirectory[directory] = pendingPrompt?.text ?? composerText
+        pendingPrompt = nil
+    }
+
+    private func discardPendingScopeActions() {
+        preservePendingDraft()
+        pendingNewSession = false
+        pendingSession = nil
+        startupSession = nil
+        pendingSessionReference = nil
+    }
+
+    /// Adopt the exact native session cwd, never a different parent's .pi files.
+    private func adoptSessionDirectory(_ path: String) {
+        let directory = Self.canonicalDirectory(path)
+        if directory == Self.canonicalDirectory(globalChatDirectory) {
+            workspaceScope = .global
+            currentProject = "Global Chat"
+        } else {
+            workspaceScope = .workspace
+            workspace = workspaces.first { Self.canonicalDirectory($0.path) == directory }
+                ?? PiWorkspaceInspector.placeholder(path: directory)
+            if !workspaces.contains(where: { Self.canonicalDirectory($0.path) == directory }) {
+                workspaces.append(workspace)
+            }
+            currentProject = workspace.name
+        }
+        currentProjectPath = directory
+        composerText = draftsByDirectory[directory] ?? ""
+        sessionProjectFilter = nil
+        availableCommands = Self.nativeCommands
+        availableThinkingLevels = ["off"]
+        configureKnowledge()
     }
 
     private func resetIdleConnectionState() {
@@ -1301,6 +1518,8 @@ final class AppState: ObservableObject {
         sessionCoordinator.receive(event.type)
         switch event.type {
         case "agent_start", "turn_start":
+            modelEventRevision = UUID()
+            beginModelTask()
             isGenerating = true
             agentStatus = "Thinking…"
         case "message_update":
@@ -1362,10 +1581,12 @@ final class AppState: ObservableObject {
             agentStatus = "Compacting…"
         case "compaction_end":
             agentStatus = "Compacted"
+            if let command = commandRevision { reconcileCommandCompletion(request: command) }
         case "agent_settled":
             isGenerating = false
-            agentStatus = "Ready"
-            taskStore.update(id: activeTaskId, state: .finished, detail: "Completed", unread: true)
+            agentStatus = runCancelled ? "Cancelled" : "Ready"
+            finishModelTask(detail: runCancelled ? "Cancelled" : "Completed")
+            if let command = commandRevision { reconcileCommandCompletion(request: command) }
             piClient.requestSessionStats { [weak self] usage in
                 guard let usage else { return }
                 self?.usageStore.updateSessionUsage(usage)

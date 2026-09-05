@@ -99,6 +99,7 @@ struct KnowledgeSearchDocument: Codable, Sendable, Hashable {
     let title: String
     let status: String
     let confidence: String?
+    var contentHash: String? = nil
 }
 
 struct KnowledgeSearchChunk: Codable, Sendable, Hashable {
@@ -133,6 +134,7 @@ struct KnowledgeSearchScopeState: Codable, Sendable, Hashable {
 struct KnowledgeDocumentResponse: Decodable, Sendable {
     let document: KnowledgeSearchDocument
     let chunks: [KnowledgeSearchChunk]
+    var recoveryPath: String? = nil
 }
 
 struct KnowledgeImportResponse: Decodable, Sendable {
@@ -178,6 +180,7 @@ struct KnowledgeCoreRequest: Encodable, Sendable {
     let limit: Int?
     var documentId: String? = nil
     var userConfirmed: Bool? = nil
+    var expectedContentHash: String? = nil
     var paths: [String]? = nil
 }
 

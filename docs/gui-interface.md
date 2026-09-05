@@ -36,7 +36,7 @@ AppState (@MainActor)
 | PiSessionCoordinator | 持有 RPC client、连接代次和运行状态；AppState 转发观察，不另存一份连接状态 |
 | SessionCatalog.swift | 会话目录解析、扫描与分组；由 AppState 在后台调度 |
 | PiSettingsEditor / PiSettingsFile | 设置表单状态、作用域、校验、合并和读写；View 只绑定、呈现并触发运行时重载 |
-| PiProcessRunner | 后台一次性进程：并发排空 stdout/stderr、限制捕获大小、超时终止，供知识库、包管理和账户的一次性调用复用 |
+| PiProcessRunner | 后台一次性进程：独立 I/O 线程并发排空 stdout/stderr 和写入 stdin，避免共享队列繁忙造成假 EOF 超时；限制捕获大小、超时终止，供知识库、包管理和账户的一次性调用复用 |
 
 RPC 与交互式 OAuth 使用专用长连接，不套用一次性 runner。RPC 的 stdin 写入在每连接独立
 队列执行，管道关闭以 EPIPE 错误处理，不让 SIGPIPE 终止 GUI。读取事件按主队列顺序交付。
@@ -107,7 +107,9 @@ View 通过以下只读派生值获取当前作用域，不自行拼接路径：
 - addExistingWorkspace()
 - refreshWorkspace()
 
-切换作用域会清理当前消息状态并重启 Pi RPC。任何未来的作用域相关状态都必须在 restartPiForScope() 中明确决定是清理、保留还是重新加载。
+切换作用域会清理当前消息状态并重启 Pi RPC。连接期间的待发送文本绑定原 cwd；用户切换项目会撤销待发送/新建/恢复请求，文本仅作为原项目的内存草稿保留，不会自动发到新项目。任何未来的作用域相关状态都必须在 restartPiForScope() 中明确决定是清理、保留还是重新加载。
+
+`switchSession(_:)` 先调用原生 RPC，保留 Pi 的切换/取消 hook。成功后，GUI 采用会话的精确 cwd，并用新 Pi 进程的 `--session <原文件>` 恢复同一会话 ID、消息与资源。原生流事件没有 session ID，因此这里必须更新连接 generation、清空旧管道并拒绝旧回调；仅重绑同一管道的回调不足以识别迟到事件。切换期间暂存模型流事件并继续处理交互 hook：成功则丢弃旧流，取消则回放到原会话，避免遗漏原任务已完成的事件。嵌套目录不会被映射到父项目的 `.pi`，Global Chat 仅匹配其规范化目录。`sessionRevision` 继续隔离旧会话的异步读取结果；取消不重启进程，也不修改原会话和作用域。恢复进程启动失败时保留目标文件供重试，并显示实际错误。
 
 ## 4. AppState 状态契约
 
@@ -116,11 +118,14 @@ AppState 标记为 @MainActor。View 可以订阅 Published 状态并调用 acti
 ### 4.1 对话与运行状态
 
 PiRunLifecycle 区分 idle/running/waiting。`turn_end`、`agent_end`、`extension_error`
-不是整个任务完成；只有 `agent_settled`、明确中止或断开连接才结束运行。
+不是整个模型任务完成；只有 `agent_settled`、明确中止或断开连接才结束模型运行。
+转发斜杠命令不预先创建聊天任务：收到真实 `agent_start` 后才升级为模型任务。纯命令成功返回后，通过 `get_state` 的 `isStreaming`、`isCompacting` 和 `pendingMessageCount` 验证空闲；命令排队的模型工作仍等 `agent_settled`。新模型事件使旧完成检查失效。`notify` 只记录非阻塞活动，confirm/select/input/editor 才进入交互等待。取消保存为 Cancelled 详情，不被随后到达的 settled 事件覆盖。尚未完成的请求不接受第二条转发请求，输入保留在编辑框。
+
+命令 generation 在第一次空闲响应后仍保留，直到下一请求或上下文切换。交互到达、用户响应、压缩结束及 agent_settled 都重新 reconcile；每次检查有独立 revision，旧的 idle 快照不能覆盖新交互。这样 `prompt response → idle → delayed UI → user response` 也会正确结束，而不会卡在 generating。
 PiRPCClient 的可变连接状态与回调在 MainActor 串行处理，阻塞写入在独立队列。每次连接有独立 generation，
 旧进程的数据、退出事件和定时器不得更新新连接。断开会清空缓冲区并取消、完成所有
 pending 请求。普通请求默认 30 秒，启动 5 秒，压缩/内部扩展命令 600 秒。
-Pi 0.84.x 的 new_session 空闲超时回退只允许当前连接触发，取消不触发重启。
+Pi 0.84.x 的 new_session 空闲超时回退只允许当前连接、已确认空闲且从未发生交互时触发。交互 hook 未完成时保留原响应等待；窗口关闭后仍按普通请求期限等待 Pi 确认结果，不能将 UI 消失视为操作完成。`interactionRevision` 也隔离超时状态查询期间发生的交互，取消不触发重启。
 包管理切换项目会清空旧上下文的 busy、快照和未保存路径编辑，并忽略旧回调。
 
 | 状态 | 用途 |
@@ -368,6 +373,8 @@ UI 测试支持：
    Knowledge Pi Package 还必须运行 `scripts/check-knowledge-plugin.sh`，检查真实 Pi RPC 中的命令、Skill、Extension 和运行时调用。
 5. Manual GUI smoke：检查 Finder 启动、真实作用域切换、会话恢复和视觉布局。
 
+`WorkflowBoundaryTests` 通过真实 Swift AppState + RPC 管道及确定性 peer 验证跨项目恢复、延迟回调、待发送文本隔离、通知、纯命令、模型排队和取消。`PERSONAL_PI_TEST_NATIVE_RPC=1 swift test --filter WorkflowBoundaryTests` 额外使用已安装 Pi 和隔离数据目录，验证真实 cwd、原生取消 hook 和 `/notify` 类命令，不使用模型凭据。Figure 导出回归检查实际着色区域的边界和比例，覆盖 PNG/TIFF/PDF、72/150/300/600 DPI、放大/缩小、非零 PDF 原点及四种页面旋转；不能只以文件存在或像素大小验收。
+
 ### 11.1 Knowledge GUI
 
 `AppState.knowledgeStore` 持有 `KnowledgeLibraryStore`，`KnowledgeView` 与 `SidebarKnowledgeSummary` 观察同一份状态。Project 切换调用 `configure(projectRoot:)`，立即清空旧内容并更新请求代号；旧请求的延迟响应不能更新新项目。文件列表、搜索与详情各有独立请求代号，避免重复刷新和点击导致结果错位。
@@ -375,6 +382,10 @@ UI 测试支持：
 `KnowledgeCoreClient` 使用 JSON stdin/stdout 调用内置 `Knowledge/runtime/knowledge_core.py`。Python 环境位于动态 Pi 根目录下的 `agent/environments/knowledge`，由锁文件同步；运行、解析和文件统计在后台执行，单次子进程有 120 秒超时。页面数据通过有类型的 Swift 模型解码，业务 UI 不读取 SQLite。
 
 侧边栏仅用 `KnowledgeDirectorySummary` 读取文件数和字节总量，不启动 Python。页面支持 Global/当前 Project 切换、所有文件/分类筛选、文件名过滤、已索引内容搜索、文本详情、Finder 打开、文件导入、增量索引、重建，以及用户点击后发布已审阅草稿。`knowledge_capture`、`knowledge_publish`、`knowledge_index` 完成后刷新知识库。容量统计包含未分类文件和附件，不包含隐藏文件和符号链接；错误和未索引状态必须明确显示。
+
+发布必须绑定预览版本：详情未读完或没有 `document.contentHash` 时不可发布。点击后，GUI 捕获已显示文档 ID/hash，发送 `expectedContentHash` 与 `userConfirmed: true`。后端同时校验索引 hash 和当前文件字节 hash；正文变更、重新索引为另一版本都要求重新预览确认，不能自动换成新 hash。
+
+发布使用原子恢复协议：将当前原稿重命名到知识根目录的 `.publish-recovery/<operation>/`，再次校验被移动的内容，再通过排他硬链接一次性发布完整的已确认快照。不会 unlink 原稿或重用后的源路径；编辑器重新保存到源路径、或通过已打开的文件描述符写入原稿，都不会被删除。冲突时不覆盖任何新文件，错误中给出恢复位置；成功响应的 `recoveryPath` 也在 GUI 状态与工具结果中显示。隐藏恢复文件不进入索引或通常的目录统计，不自动清理。若发布后源路径出现新稿，报告冲突并保留新稿及已发布的确认版本，需用户处理后再索引。
 
 测试入口：`KnowledgeLibraryTests` 覆盖解码、时间、容量、延迟响应隔离；设置 `PERSONAL_PI_TEST_KNOWLEDGE_RUNTIME=1` 可运行真实 Swift/Python 导入到检索流程。XCUITest 使用 `PERSONAL_PI_UI_TESTING` 下的临时 JSON fixture，不访问真实用户知识库；知识页面测试覆盖中文文案、分类筛选和 Project/Global 切换。
 

@@ -199,7 +199,10 @@ def file_hash(path: Path) -> str:
 
 
 def read_text(path: Path) -> str:
-    raw = path.read_bytes()
+    return decode_text(path.read_bytes())
+
+
+def decode_text(raw: bytes) -> str:
     if len(raw) > MAX_FILE_BYTES:
         raise KnowledgeCoreError(f"file exceeds {MAX_FILE_BYTES} bytes")
     for encoding in ("utf-8-sig", "utf-8", "utf-16", "latin-1"):
@@ -1158,19 +1161,27 @@ def capture_record(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, 
     }
 
 
+def publish_snapshot(snapshot: Path, destination: Path) -> None:
+    """Atomically expose a fully written file without replacing any destination."""
+    os.link(snapshot, destination)
+
+
 def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, Any]:
     if request.get("userConfirmed") is not True:
         raise KnowledgeCoreError("publishing requires explicit user confirmation")
     document_id = str(request.get("documentId") or "").strip()
     if not document_id:
         raise KnowledgeCoreError("publish requires documentId")
+    expected_hash = request.get("expectedContentHash")
+    if not isinstance(expected_hash, str) or not expected_hash:
+        raise KnowledgeCoreError("publish requires expectedContentHash from the user-confirmed preview")
     connection = connect_scope(scope, create=False)
     if connection is None:
         raise KnowledgeCoreError("knowledge index is not initialized")
     try:
         row = connection.execute(
             """
-            SELECT relative_path, category, status FROM documents
+            SELECT relative_path, category, status, content_hash FROM documents
             WHERE scope_id = ? AND id = ? AND error IS NULL
             """,
             (scope.scope_id, document_id),
@@ -1186,7 +1197,10 @@ def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, An
     knowledge_root = scope.knowledge_root.resolve()
     if not source.is_relative_to(knowledge_root) or source.suffix.lower() not in {".md", ".markdown"}:
         raise KnowledgeCoreError("draft path is outside the knowledge root or is not Markdown")
-    metadata, content = parse_frontmatter(read_text(source))
+    source_bytes = source.read_bytes()
+    if row["content_hash"] != expected_hash or hashlib.sha256(source_bytes).hexdigest() != expected_hash:
+        raise KnowledgeCoreError("draft changed since preview; refresh the index, preview, and confirm this version again")
+    metadata, content = parse_frontmatter(decode_text(source_bytes))
     if metadata.get("id") != document_id or metadata.get("status") != "draft":
         raise KnowledgeCoreError("draft changed since indexing; refresh the index before publishing")
     metadata["status"] = "reviewed"
@@ -1195,23 +1209,60 @@ def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, An
 
     destination = scope.knowledge_root / "cards" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with destination.open("x", encoding="utf-8") as stream:
-            stream.write(markdown_record(metadata, content))
-    except FileExistsError as error:
-        raise KnowledgeCoreError(f"published card already exists: {destination.name}") from error
-    try:
-        source.unlink()
-    except Exception:
-        destination.unlink(missing_ok=True)
-        raise
+    if os.path.lexists(destination):
+        raise KnowledgeCoreError(f"published card already exists: {destination.name}")
 
-    indexed = index_scope(scope)
-    document = get_document(scope, document_id)
+    # A final read followed by unlink(source) cannot protect an editor's save.
+    # Claim the current inode atomically and never unlink it: both in-place
+    # writes through an already-open descriptor and atomic saves to the original
+    # pathname remain recoverable. Recovery files are hidden from the index.
+    recovery_root = knowledge_root / ".publish-recovery"
+    if recovery_root.is_symlink():
+        raise KnowledgeCoreError("publication recovery directory must not be a symlink")
+    recovery_root.mkdir(mode=0o700, exist_ok=True)
+    recovery_dir = recovery_root / uuid.uuid4().hex
+    recovery_dir.mkdir(mode=0o700)
+    recovery_source = recovery_dir / source.name
+    snapshot = recovery_dir / "reviewed.snapshot"
+    source.rename(recovery_source)
+    published = False
+    try:
+        if recovery_source.is_symlink() or recovery_source.read_bytes() != source_bytes:
+            raise KnowledgeCoreError("draft changed before publication; preview and confirm again")
+        if os.path.lexists(source):
+            raise KnowledgeCoreError("draft was saved again during publication; new draft preserved")
+        reviewed_text = markdown_record(metadata, content)
+        with snapshot.open("x", encoding="utf-8") as stream:
+            stream.write(reviewed_text)
+        publish_snapshot(snapshot, destination)
+        published = True
+        if os.path.lexists(source):
+            raise KnowledgeCoreError(
+                f"draft was saved again during publication; new draft preserved at {source}; "
+                f"only the confirmed version was published at {destination}"
+            )
+        indexed = index_scope(scope)
+        document = get_document(scope, document_id)
+        if (os.path.lexists(source)
+                or document["document"]["relativePath"] != destination.relative_to(knowledge_root).as_posix()
+                or document["document"]["contentHash"] != hashlib.sha256(reviewed_text.encode("utf-8")).hexdigest()):
+            raise KnowledgeCoreError("publication changed during indexing; all versions retained for review")
+    except Exception as error:
+        if not published:
+            try:
+                # Exclusive restoration: never overwrite a concurrently saved
+                # pathname. Keep the recovery link even after restoration.
+                os.link(recovery_source, source, follow_symlinks=False)
+            except FileExistsError:
+                pass
+            except OSError as restore_error:
+                raise KnowledgeCoreError(f"{error}; restore failed: {restore_error}; recovery: {recovery_source}") from error
+        raise KnowledgeCoreError(f"{error}; recovery: {recovery_source}") from error
     return {
         "scope": scope.as_dict(),
         "path": str(destination),
         "relativePath": destination.relative_to(scope.knowledge_root).as_posix(),
+        "recoveryPath": str(recovery_source),
         "index": indexed,
         **document,
     }

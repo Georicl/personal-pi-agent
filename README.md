@@ -77,6 +77,7 @@ TopBar 右上角的预览按钮可在任意页面打开 Artifact Sidebar；侧�
 - 左侧 Project 卡片显示当前 Git 分支、工作区修改数量和 Pi 会话数量。
 - Pi 使用项目根目录启动，因此项目级 `AGENTS.md`、`.pi/settings.json`、Skills、Extensions、Prompts 和 Themes 会按 Pi 规则加载。
 - 切换 Project 时，当前 Pi RPC 进程会重启；正在生成的任务会标记为被项目切换中断。
+- 连接中的待发送消息留在原项目，不会跟随切换发送；切回后可从草稿重新发送。跨项目恢复会话会同步采用该会话的精确目录与知识库。
 
 ### Global Chat
 
@@ -110,6 +111,10 @@ TopBar 右上角的预览按钮可在任意页面打开 Artifact Sidebar；侧�
 | `/reload` | 重新加载 Extensions、Skills、Prompts 和 Themes |
 
 Pi 返回的 Extension commands、Prompt Templates 和 `/skill:*` 命令也会合并到同一命令面板。以 `__personal_pi_` 开头的内部桥接命令不会显示给用户。
+
+纯命令和通知不会新增聊天任务；命令真正启动模型后才显示任务。通知不要求确认，停止或取消也不会显示为正常完成。知识卡发布绑定已预览的具体内容版本；预览后修改正文或更新为不同索引版本，需要重新预览确认。
+
+知识卡发布会保留可恢复原稿，成功后显示恢复路径；并发编辑冲突不会覆盖或删除新稿。恢复文件位于知识根目录的 `.publish-recovery/`，不参与检索、不自动清理。
 
 ## Settings
 

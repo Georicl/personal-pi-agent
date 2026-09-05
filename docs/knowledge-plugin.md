@@ -55,7 +55,9 @@ Model-facing JSON output is bounded to 120,000 characters. Truncation affects on
 
 `knowledge_capture` never writes directly to reviewed `cards/`. Synthesized content goes to `drafts/`; raw or registered material goes to `inbox/` or `sources/`. It creates a new stable ID and file rather than silently overwriting an existing record.
 
-`knowledge_publish` accepts only an indexed draft and requires `userConfirmed: true`. It preserves the card ID, changes status to `reviewed`, moves the Markdown file into `cards/`, and reindexes. There is no knowledge deletion tool.
+`knowledge_publish` accepts only an indexed draft and requires `userConfirmed: true` and `expectedContentHash` from the user-confirmed `knowledge_get` preview (`document.contentHash`). Both the current source bytes and the indexed snapshot must match that hash. A changed draft must be reindexed, previewed, and confirmed again; callers must not substitute a newer hash automatically. It preserves the card ID, changes status to `reviewed`, moves the Markdown file into `cards/`, and reindexes. There is no knowledge deletion tool.
+
+Publication atomically claims the original file in `.publish-recovery/<operation>/` and retains it, then exclusively links a fully prepared reviewed snapshot into `cards/`. It never unlinks a possibly replaced draft pathname or the claimed original inode. Concurrent pathname saves and in-place edits through an editor's open descriptor are retained. Failures restore only an absent original path without overwriting a concurrent save; errors include recovery locations. Success returns `recoveryPath`. Recovery originals/snapshots are hidden from indexing and normal inventory and are not automatically deleted. If a new draft appears during publication, the operation reports a conflict, retaining the new draft and any already-published confirmed version; resolve the conflict before reindexing. Filesystems that cannot perform the atomic rename/hard-link operations fail with recoverable source data rather than falling back to destructive copy/unlink behavior.
 
 ## Managed runtime
 

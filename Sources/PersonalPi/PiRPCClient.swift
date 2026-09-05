@@ -21,6 +21,20 @@ struct PiSessionState: Sendable {
     let thinkingLevel: String?
     let isStreaming: Bool
     let messageCount: Int
+    let isCompacting: Bool
+    let pendingMessageCount: Int
+
+    var isIdle: Bool { !isStreaming && !isCompacting && pendingMessageCount == 0 }
+}
+
+enum PiSessionChangeResult: Equatable {
+    case changed, cancelled, failed
+
+    static func decode(_ response: [String: Any]) -> Self {
+        if response["cancelled"] as? Bool == true ||
+            (response["data"] as? [String: Any])?["cancelled"] as? Bool == true { return .cancelled }
+        return response["success"] as? Bool == true ? .changed : .failed
+    }
 }
 
 struct PiSessionTreeNode: Identifiable, Sendable, Hashable {
@@ -162,10 +176,13 @@ final class PiRPCClient: NSObject {
         let timeout: Task<Void, Never>
     }
     private var pendingResponses: [String: PendingResponse] = [:]
+    private var interactiveRequestIDs = Set<String>()
+    private var interactionRevision = UUID()
     private var generation = UUID()
     private var launchStderr = ""
     private let executableOverride: String?
     private let argumentsOverride: [String]?
+    private let environmentOverride: [String: String]?
     private let startupTimeout: TimeInterval
     private let requestTimeout: TimeInterval
     private let newSessionTimeout: TimeInterval
@@ -174,11 +191,12 @@ final class PiRPCClient: NSObject {
     var onTermination: ((String) -> Void)?
     var onUIRequest: ((PiUIRequest) -> Void)?
 
-    init(executable: String? = nil, arguments: [String]? = nil,
+    init(executable: String? = nil, arguments: [String]? = nil, environment: [String: String]? = nil,
          startupTimeout: TimeInterval = 5, requestTimeout: TimeInterval = 30,
          newSessionTimeout: TimeInterval = 2) {
         executableOverride = executable
         argumentsOverride = arguments
+        environmentOverride = environment
         self.startupTimeout = startupTimeout
         self.requestTimeout = requestTimeout
         self.newSessionTimeout = newSessionTimeout
@@ -196,7 +214,8 @@ final class PiRPCClient: NSObject {
         PiLaunchConfiguration.modelLabel(for: workingDirectory)
     }
 
-    func start(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping (Bool, String) -> Void) {
+    func start(workingDirectory: String, projectTrusted: Bool = true, sessionPath: String? = nil,
+               completion: @escaping (Bool, String) -> Void) {
         guard process == nil else {
             completion(onStart == nil, onStart == nil ? "already running" : "Pi is connecting")
             return
@@ -227,8 +246,9 @@ final class PiRPCClient: NSObject {
 
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = argumentsOverride ?? PiLaunchConfiguration.arguments(projectTrusted: projectTrusted)
+        if let sessionPath { process.arguments?.append(contentsOf: ["--session", sessionPath]) }
         process.currentDirectoryURL = URL(fileURLWithPath: cwd)
-        process.environment = PiLaunchConfiguration.processEnvironment()
+        process.environment = environmentOverride ?? PiLaunchConfiguration.processEnvironment()
         process.standardInput = input
         process.standardOutput = output
         process.standardError = error
@@ -296,19 +316,32 @@ final class PiRPCClient: NSObject {
         }
     }
 
-    func newSession(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping (Bool) -> Void) {
+    func newSession(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping (PiSessionChangeResult) -> Void) {
         let connection = generation
+        let interaction = interactionRevision
         request(type: "new_session", timeout: newSessionTimeout) { [weak self] response in
             // Pi 0.84.x can leave new_session pending while idle. Only a timeout
             // in this connection may restart it; a cancelled request never can.
             guard let self, self.generation == connection,
                   response["timedOut"] as? Bool == true else {
-                completion(Self.responseSucceeded(response))
+                completion(PiSessionChangeResult.decode(response))
                 return
             }
-            self.stop()
-            self.start(workingDirectory: workingDirectory, projectTrusted: projectTrusted) { success, _ in
-                completion(success)
+            guard self.interactionRevision == interaction else {
+                completion(.failed) // Never restart after a human-facing hook.
+                return
+            }
+            self.requestState { [weak self] state in
+                guard let self, self.generation == connection else { completion(.cancelled); return }
+                guard state?.isIdle == true, self.interactiveRequestIDs.isEmpty,
+                      self.interactionRevision == interaction else {
+                    completion(.failed)
+                    return
+                }
+                self.stop()
+                self.start(workingDirectory: workingDirectory, projectTrusted: projectTrusted) { success, _ in
+                    completion(success ? .changed : .failed)
+                }
             }
         }
     }
@@ -349,7 +382,9 @@ final class PiRPCClient: NSObject {
                 model: model.isEmpty ? nil : model,
                 thinkingLevel: data["thinkingLevel"] as? String,
                 isStreaming: (data["isStreaming"] as? Bool) ?? false,
-                messageCount: (data["messageCount"] as? NSNumber)?.intValue ?? 0
+                messageCount: (data["messageCount"] as? NSNumber)?.intValue ?? 0,
+                isCompacting: data["isCompacting"] as? Bool ?? false,
+                pendingMessageCount: (data["pendingMessageCount"] as? NSNumber)?.intValue ?? 0
             ))
         }
     }
@@ -366,9 +401,9 @@ final class PiRPCClient: NSObject {
         }
     }
 
-    func switchSession(path: String, completion: @escaping (Bool) -> Void) {
+    func switchSession(path: String, completion: @escaping (PiSessionChangeResult) -> Void) {
         request(type: "switch_session", fields: ["sessionPath": path]) { response in
-            completion(Self.responseSucceeded(response))
+            completion(PiSessionChangeResult.decode(response))
         }
     }
 
@@ -568,6 +603,8 @@ final class PiRPCClient: NSObject {
     }
 
     func respondToUIRequest(id: String, value: String? = nil, confirmed: Bool? = nil, cancelled: Bool = false) {
+        interactiveRequestIDs.remove(id)
+        interactionRevision = UUID()
         var command: [String: Any] = [
             "type": "extension_ui_response",
             "id": id
@@ -609,6 +646,7 @@ final class PiRPCClient: NSObject {
     }
 
     private func disconnect(reason: String) {
+        interactiveRequestIDs.removeAll()
         generation = UUID()
         let oldProcess = process
         outputPipe?.fileHandleForReading.readabilityHandler = nil
@@ -646,9 +684,24 @@ final class PiRPCClient: NSObject {
         }
         let id = UUID().uuidString
         let connection = generation
+        let interaction = interactionRevision
         let duration = timeout ?? requestTimeout
         let timer = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(duration)) } catch { return }
+            // After a dialog closes, Pi still needs time to acknowledge its
+            // result. Closing the UI is not completion of the session operation.
+            var lastInteraction = interaction
+            while type == "new_session", let self, self.generation == connection,
+                  self.pendingResponses[id] != nil {
+                if !self.interactiveRequestIDs.isEmpty {
+                    do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+                } else if self.interactionRevision != lastInteraction {
+                    lastInteraction = self.interactionRevision
+                    do { try await Task.sleep(for: .seconds(self.requestTimeout)) } catch { return }
+                } else {
+                    break
+                }
+            }
             guard let self, self.generation == connection,
                   let response = self.pendingResponses.removeValue(forKey: id) else { return }
             response.completion(["success": false, "error": "Pi \(type) timed out", "timedOut": true])
@@ -689,6 +742,10 @@ final class PiRPCClient: NSObject {
                 }
             } else if object["type"] as? String == "extension_ui_request",
                       let request = Self.parseUIRequest(object) {
+                if ["select", "confirm", "input", "editor"].contains(request.method) {
+                    interactiveRequestIDs.insert(request.id)
+                    interactionRevision = UUID()
+                }
                 onUIRequest?(request)
             } else if let event = Self.parseEvent(object) {
                 onEvent?(event)

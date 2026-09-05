@@ -213,6 +213,105 @@ struct FigureArtifactTests {
         #expect(abs(page.getBoxRect(.mediaBox).height - 50 / 25.4 * 72) < 0.1)
     }
 
+    @Test("PDF rasterization preserves actual content coverage when enlarging and shrinking",
+          arguments: [72, 150, 300, 600])
+    func exportContentCoverage(dpi: Int) throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let pdf = directory.appendingPathComponent("source.pdf")
+        let png = directory.appendingPathComponent("source.png")
+        try makeTestPDF(at: pdf)
+        try makeTestPNG(at: png)
+        var object = manifestObject(previewPath: png.path)
+        object["files"] = [["format": "pdf", "path": pdf.path], ["format": "png", "path": png.path],
+                           ["format": "tiff", "path": png.path]]
+        let artifact = try #require(FigureArtifact.decode(object))
+        for format in [FigureExportFormat.png, .tiff, .pdf] {
+            for width in [25.4, 210.0] {
+                let output = directory.appendingPathComponent("export.\(format.filenameExtension)")
+                try FigureExporter.export(artifact: artifact, format: format, destination: output,
+                                          widthMm: width, heightMm: width / 2, dpi: dpi)
+                let image: CGImage
+                if format == .pdf {
+                    // Independent rendering oracle: output media box is origin zero.
+                    // Do not reuse FigureExporter's fitting transform to validate it.
+                    let document = try #require(CGPDFDocument(output as CFURL))
+                    let page = try #require(document.page(at: 1))
+                    let box = page.getBoxRect(.mediaBox)
+                    let ctx = try bitmapContext(width: 600, height: 300)
+                    ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+                    ctx.fill(CGRect(x: 0, y: 0, width: 600, height: 300))
+                    ctx.scaleBy(x: 600 / box.width, y: 300 / box.height)
+                    ctx.drawPDFPage(page)
+                    image = try #require(ctx.makeImage())
+                } else {
+                    let source = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+                    image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+                }
+                let bounds = try coloredBounds(image)
+                #expect(abs(bounds.width / Double(image.width) - 120.0 / 300) < 0.04)
+                #expect(abs(bounds.height / Double(image.height) - 80.0 / 150) < 0.04)
+                #expect(abs(bounds.minX / Double(image.width) - 20.0 / 300) < 0.04)
+            }
+        }
+    }
+
+    @Test("PDF fit includes nonzero page origins and rotation", arguments: [0, 90, 180, 270])
+    func rotatedPageFit(rotation: Int) throws {
+        let stream = "0.15 0.45 0.7 rg 50 30 100 200 re f"
+        let objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                       "<< /Type /Page /Parent 2 0 R /MediaBox [50 30 150 230] /Rotate \(rotation) /Contents 4 0 R >>",
+                       "<< /Length \(stream.utf8.count) >>\nstream\n\(stream)\nendstream"]
+        var pdf = "%PDF-1.4\n"
+        var offsets: [Int] = []
+        for (index, object) in objects.enumerated() {
+            offsets.append(pdf.utf8.count)
+            pdf += "\(index + 1) 0 obj\n\(object)\nendobj\n"
+        }
+        let xref = pdf.utf8.count
+        pdf += "xref\n0 5\n0000000000 65535 f \n"
+        pdf += offsets.map { String(format: "%010d 00000 n \n", $0) }.joined()
+        pdf += "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n\(xref)\n%%EOF\n"
+        let provider = try #require(CGDataProvider(data: Data(pdf.utf8) as CFData))
+        let document = try #require(CGPDFDocument(provider))
+        let page = try #require(document.page(at: 1))
+        let ctx = try bitmapContext(width: 800, height: 800)
+        ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: 800, height: 800))
+        ctx.concatenate(FigureExporter.fittingTransform(page: page, target: CGRect(x: 0, y: 0, width: 800, height: 800)))
+        ctx.drawPDFPage(page)
+        let bounds = try coloredBounds(try #require(ctx.makeImage()))
+        #expect(abs(bounds.width - (rotation % 180 == 0 ? 400 : 800)) < 2)
+        #expect(abs(bounds.height - (rotation % 180 == 0 ? 800 : 400)) < 2)
+        #expect(abs(bounds.midX - 400) < 2)
+        #expect(abs(bounds.midY - 400) < 2)
+    }
+
+    private func bitmapContext(width: Int, height: Int) throws -> CGContext {
+        try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                               bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    }
+
+    private func coloredBounds(_ image: CGImage) throws -> CGRect {
+        let ctx = try bitmapContext(width: image.width, height: image.height)
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let bytes = try #require(ctx.data).assumingMemoryBound(to: UInt8.self)
+        var minX = image.width, minY = image.height, maxX = -1, maxY = -1
+        for y in 0..<image.height {
+            for x in 0..<image.width {
+                let offset = y * ctx.bytesPerRow + x * 4
+                if Int(bytes[offset + 2]) > Int(bytes[offset]) + 40 {
+                    minX = min(minX, x); minY = min(minY, y)
+                    maxX = max(maxX, x); maxY = max(maxY, y)
+                }
+            }
+        }
+        #expect(maxX >= minX && maxY >= minY, "Export lost all colored figure content")
+        return CGRect(x: minX, y: minY, width: max(0, maxX - minX + 1), height: max(0, maxY - minY + 1))
+    }
+
     private func manifestObject(previewPath: String) -> [String: Any] {
         [
             "schemaVersion": 1,

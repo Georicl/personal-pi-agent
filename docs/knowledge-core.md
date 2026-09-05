@@ -121,7 +121,7 @@ SQLite runs with foreign keys and WAL enabled. FTS entries are synchronized by i
 | `search` | `scopes`, `query` | Search one or more indexes and return located chunks |
 | `get` | `scope`, `documentId` | Return one document and all chunks |
 | `capture` | `scope`, `category`, `title`, `content` | Create an inbox item, source, or draft card and index it |
-| `publish` | `scope`, `documentId`, `userConfirmed` | Move a confirmed draft into reviewed cards and reindex |
+| `publish` | `scope`, `documentId`, `userConfirmed`, `expectedContentHash` | Atomically publish the confirmed snapshot, retain the claimed original in hidden recovery storage, and return `recoveryPath`; never unlink a concurrently saved draft |
 
 Global initialization example:
 

@@ -9,9 +9,9 @@ struct PiRunLifecycle {
 
     mutating func receive(_ event: String) {
         switch event {
-        case "agent_start", "turn_start", "tool_execution_start", "message_update": phase = .running
+        case "command_start", "agent_start", "turn_start", "tool_execution_start", "message_update": phase = .running
         case "extension_ui_request": phase = .waiting
-        case "agent_settled", "disconnected": phase = .idle
+        case "command_finished", "agent_settled", "disconnected": phase = .idle
         default: break
         }
     }

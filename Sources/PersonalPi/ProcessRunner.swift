@@ -94,7 +94,10 @@ enum PiProcessRunner {
         process.standardError = capture.error
         try process.run()
         capture.start()
-        DispatchQueue.global(qos: .utility).async {
+        // Blocking pipe I/O must not compete with CPU work on the shared
+        // utility pool: even an exited child could otherwise hit the EOF grace
+        // timeout before its queued drain starts on a busy CI/GUI process.
+        Thread.detachNewThread {
             defer { try? stdin.fileHandleForWriting.close() }
             if let input { try? stdin.fileHandleForWriting.write(contentsOf: input) }
         }
@@ -147,7 +150,7 @@ private final class PiProcessCapture: @unchecked Sendable {
 
     private func drain(_ pipe: Pipe, isError: Bool) {
         group.enter()
-        DispatchQueue.global(qos: .utility).async { [self] in
+        Thread.detachNewThread { [self] in
             defer { group.leave() }
             while let chunk = try? pipe.fileHandleForReading.read(upToCount: 64 * 1024), !chunk.isEmpty {
                 lock.lock()
