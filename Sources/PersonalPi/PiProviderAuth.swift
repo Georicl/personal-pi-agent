@@ -129,30 +129,19 @@ enum PiProviderAuthBridge {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let process = Process()
-            let output = Pipe()
-            let error = Pipe()
-            process.executableURL = URL(fileURLWithPath: configuration.nodeExecutable)
-            process.arguments = [
-                configuration.scriptURL.path,
-                "list",
-                configuration.piExecutable,
-                configuration.workingDirectory.path
-            ]
-            process.currentDirectoryURL = FileManager.default.temporaryDirectory
-            process.environment = environment(for: configuration)
-            process.standardOutput = output
-            process.standardError = error
-
+            let captured: PiProcessResult
             do {
-                try process.run()
-                process.waitUntilExit()
+                captured = try PiProcessRunner.run(
+                    executable: URL(fileURLWithPath: configuration.nodeExecutable),
+                    arguments: [configuration.scriptURL.path, "list", configuration.piExecutable,
+                                configuration.workingDirectory.path],
+                    workingDirectory: FileManager.default.temporaryDirectory,
+                    environment: environment(for: configuration))
             } catch {
-                completion(.failure(PiProviderAuthBridgeError.launchFailed(error.localizedDescription)))
+                completion(.failure(error))
                 return
             }
-
-            let outputData = output.fileHandleForReading.readDataToEndOfFile()
+            let outputData = captured.output
             if let providers = try? decodeProviderList(outputData) {
                 completion(.success(providers))
                 return
@@ -163,7 +152,7 @@ enum PiProviderAuthBridge {
             }
 
             let stderr = String(
-                data: error.fileHandleForReading.readDataToEndOfFile(),
+                data: captured.error,
                 encoding: .utf8
             )?.trimmingCharacters(in: .whitespacesAndNewlines)
             completion(.failure(PiProviderAuthBridgeError.bridgeFailed(
@@ -389,36 +378,25 @@ enum PiProviderAuthBridge {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let process = Process()
-            let output = Pipe()
-            let error = Pipe()
-            process.executableURL = URL(fileURLWithPath: configuration.nodeExecutable)
-            process.arguments = [
-                configuration.scriptURL.path,
-                mode,
-                configuration.piExecutable,
-                configuration.workingDirectory.path
-            ] + arguments
-            process.currentDirectoryURL = FileManager.default.temporaryDirectory
-            process.environment = environment(for: configuration)
-            process.standardOutput = output
-            process.standardError = error
-
+            let captured: PiProcessResult
             do {
-                try process.run()
-                process.waitUntilExit()
+                captured = try PiProcessRunner.run(
+                    executable: URL(fileURLWithPath: configuration.nodeExecutable),
+                    arguments: [configuration.scriptURL.path, mode, configuration.piExecutable,
+                                configuration.workingDirectory.path] + arguments,
+                    workingDirectory: FileManager.default.temporaryDirectory,
+                    environment: environment(for: configuration))
             } catch {
-                completion(.failure(PiProviderAuthBridgeError.launchFailed(error.localizedDescription)))
+                completion(.failure(error))
                 return
             }
-
-            let outputData = output.fileHandleForReading.readDataToEndOfFile()
+            let outputData = captured.output
             if decodeSuccessfulResult(outputData) {
                 completion(.success(()))
                 return
             }
             let stderr = String(
-                data: error.fileHandleForReading.readDataToEndOfFile(),
+                data: captured.error,
                 encoding: .utf8
             )?.trimmingCharacters(in: .whitespacesAndNewlines)
             completion(.failure(PiProviderAuthBridgeError.bridgeFailed(

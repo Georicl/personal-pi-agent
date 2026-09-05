@@ -23,3 +23,5 @@ for line in sys.stdin:
     time.sleep(0.005)
     sys.stdout.write(response[12:] + '\n')
     sys.stdout.flush()
+    if os.path.basename(os.getcwd()) == 'blocked':
+        time.sleep(10)

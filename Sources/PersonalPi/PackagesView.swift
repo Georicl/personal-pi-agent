@@ -300,8 +300,7 @@ struct PackagesView: View {
 
     private func configureAndLoad() {
         viewModel.configure(
-            agentDirectory: URL(fileURLWithPath: appState.piRootDirectory)
-                .appendingPathComponent("agent", isDirectory: true),
+            agentDirectory: PiRuntimeContext.current.agentDirectory,
             workingDirectory: URL(
                 fileURLWithPath: appState.activeWorkingDirectory,
                 isDirectory: true

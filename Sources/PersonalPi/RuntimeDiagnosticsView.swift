@@ -106,8 +106,7 @@ enum RuntimeDiagnosticsInspector {
             ]
         )
 
-        let agentRoot = URL(fileURLWithPath: input.piRoot)
-            .appendingPathComponent("agent", isDirectory: true)
+        let agentRoot = PiRuntimeContext(dataRoot: URL(fileURLWithPath: input.piRoot)).agentDirectory
         let sessionsRoot = agentRoot.appendingPathComponent("sessions", isDirectory: true)
         let global = RuntimeDiagnosticSection(
             id: "global",

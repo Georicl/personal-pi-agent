@@ -1,0 +1,48 @@
+name: Personal Pi checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift:
+    name: Swift and Xcode
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.12.0'
+      - name: Unit and local Python integration tests
+        run: PERSONAL_PI_TEST_KNOWLEDGE_RUNTIME=1 swift test --parallel
+      - name: Strict release build
+        run: swift build -c release -Xswiftc -warnings-as-errors
+      - name: Xcode project parity
+        run: xcodebuild -project PersonalPi.xcodeproj -scheme PersonalPi -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+  packages:
+    name: Offline Pi packages
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.12.0'
+      - name: Install pinned Pi test runtime
+        run: npm install --global --ignore-scripts @earendil-works/pi-coding-agent@0.84.3
+      - name: Knowledge package and core
+        run: bash scripts/check-knowledge-plugin.sh
+      - name: Figure package
+        run: bash scripts/check-figure-plugin.sh

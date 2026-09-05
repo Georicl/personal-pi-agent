@@ -24,8 +24,7 @@ struct RootView: View {
         .onChange(of: appState.activeWorkingDirectory) { _ in appState.configureKnowledge() }
         .sheet(item: $appState.providerAccountRequest) { request in
             ProviderLoginView(
-                agentDirectory: URL(fileURLWithPath: appState.piRootDirectory)
-                    .appendingPathComponent("agent", isDirectory: true),
+                agentDirectory: PiRuntimeContext.current.agentDirectory,
                 workingDirectory: URL(
                     fileURLWithPath: appState.activeWorkingDirectory,
                     isDirectory: true

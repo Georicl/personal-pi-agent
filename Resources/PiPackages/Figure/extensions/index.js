@@ -85,8 +85,8 @@ function expandPath(value, cwd) {
 }
 
 function effectiveSettings(cwd) {
-  const agentDirectory =
-    process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
+  const agentDirectory = expandPath(
+    process.env.PI_CODING_AGENT_DIR?.trim() || join(process.env.PERSONAL_PI_DATA_ROOT?.trim() || join(homedir(), ".pi"), "agent"), cwd);
   const globalSettings = readJson(join(agentDirectory, "settings.json"));
   const projectSettings = readJson(join(cwd, ".pi", "settings.json"));
   return {
@@ -222,7 +222,7 @@ async function managedPython(cwd, signal, onUpdate) {
           cwd,
           signal,
           timeoutMs: 600000,
-          env: { ...process.env, UV_NO_PROGRESS: "1" },
+          env: { ...process.env, UV_NO_PROGRESS: "1", UV_PROJECT_ENVIRONMENT: join(environmentRoot, ".venv") },
         },
       );
       if (result.code !== 0) {

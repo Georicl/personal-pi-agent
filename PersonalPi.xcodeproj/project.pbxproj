@@ -49,6 +49,12 @@
 		C00000000000000000000006 /* SessionCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000006 /* SessionCommandTests.swift */; };
 		C00000000000000000000007 /* FigureArtifactTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000007 /* FigureArtifactTests.swift */; };
 		D00000000000000000000001 /* PersonalPiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = U00000000000000000000001 /* PersonalPiUITests.swift */; };
+		A00000000000000000000023 /* RuntimeContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000023 /* RuntimeContext.swift */; };
+		A00000000000000000000024 /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000024 /* ProcessRunner.swift */; };
+		A00000000000000000000025 /* SettingsEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000025 /* SettingsEditor.swift */; };
+		A00000000000000000000026 /* SessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000026 /* SessionCoordinator.swift */; };
+		A00000000000000000000027 /* SessionCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000027 /* SessionCatalog.swift */; };
+		C00000000000000000000009 /* RuntimeServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000009 /* RuntimeServicesTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -116,6 +122,12 @@
 		T00000000000000000000006 /* SessionCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCommandTests.swift; sourceTree = "<group>"; };
 		T00000000000000000000007 /* FigureArtifactTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FigureArtifactTests.swift; sourceTree = "<group>"; };
 		U00000000000000000000001 /* PersonalPiUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalPiUITests.swift; sourceTree = "<group>"; };
+		S00000000000000000000023 /* RuntimeContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeContext.swift; sourceTree = "<group>"; };
+		S00000000000000000000024 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
+		S00000000000000000000025 /* SettingsEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsEditor.swift; sourceTree = "<group>"; };
+		S00000000000000000000026 /* SessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCoordinator.swift; sourceTree = "<group>"; };
+		S00000000000000000000027 /* SessionCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCatalog.swift; sourceTree = "<group>"; };
+		T00000000000000000000009 /* RuntimeServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeServicesTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -150,6 +162,11 @@
 				S00000000000000000000002 /* AppLanguage.swift */,
 				S00000000000000000000003 /* AppState.swift */,
 				S00000000000000000000004 /* KnowledgeView.swift */,
+				S00000000000000000000023 /* RuntimeContext.swift */,
+				S00000000000000000000024 /* ProcessRunner.swift */,
+				S00000000000000000000025 /* SettingsEditor.swift */,
+				S00000000000000000000026 /* SessionCoordinator.swift */,
+				S00000000000000000000027 /* SessionCatalog.swift */,
 				S00000000000000000000022 /* KnowledgeLibraryStore.swift */,
 				S00000000000000000000021 /* KnowledgeCoreClient.swift */,
 				S00000000000000000000005 /* OverviewView.swift */,
@@ -204,6 +221,7 @@
 				T00000000000000000000005 /* PackageManagerTests.swift */,
 				T00000000000000000000006 /* SessionCommandTests.swift */,
 				T00000000000000000000007 /* FigureArtifactTests.swift */,
+				T00000000000000000000009 /* RuntimeServicesTests.swift */,
 				T00000000000000000000008 /* KnowledgeLibraryTests.swift */,
 				T00000000000000000000004 /* ProviderAuthTests.swift */,
 				T00000000000000000000001 /* SettingsFileTests.swift */,
@@ -326,6 +344,11 @@
 				A00000000000000000000002 /* AppLanguage.swift in Sources */,
 				A00000000000000000000003 /* AppState.swift in Sources */,
 				A00000000000000000000004 /* KnowledgeView.swift in Sources */,
+				A00000000000000000000023 /* RuntimeContext.swift in Sources */,
+				A00000000000000000000024 /* ProcessRunner.swift in Sources */,
+				A00000000000000000000025 /* SettingsEditor.swift in Sources */,
+				A00000000000000000000026 /* SessionCoordinator.swift in Sources */,
+				A00000000000000000000027 /* SessionCatalog.swift in Sources */,
 				A00000000000000000000022 /* KnowledgeLibraryStore.swift in Sources */,
 				A00000000000000000000021 /* KnowledgeCoreClient.swift in Sources */,
 				A00000000000000000000005 /* OverviewView.swift in Sources */,
@@ -351,7 +374,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		F30000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000001, C00000000000000000000002, C00000000000000000000003, C00000000000000000000004, C00000000000000000000005, C00000000000000000000006, C00000000000000000000007, C00000000000000000000008); runOnlyForDeploymentPostprocessing = 0; };
+		F30000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000001, C00000000000000000000002, C00000000000000000000003, C00000000000000000000004, C00000000000000000000005, C00000000000000000000006, C00000000000000000000007, C00000000000000000000008, C00000000000000000000009); runOnlyForDeploymentPostprocessing = 0; };
 		F30000000000000000000003 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (D00000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

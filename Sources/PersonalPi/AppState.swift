@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Combine
 
 enum AppSection: String, CaseIterable, Identifiable {
     case overview
@@ -86,21 +87,6 @@ enum PiActivityState: Sendable {
     case failed
 }
 
-/// Pi can execute several turns, retries and continuations for one user task.
-struct PiRunLifecycle {
-    enum Phase { case idle, running, waiting }
-    private(set) var phase: Phase = .idle
-    var isActive: Bool { phase != .idle }
-
-    mutating func receive(_ event: String) {
-        switch event {
-        case "agent_start", "turn_start", "tool_execution_start", "message_update": phase = .running
-        case "extension_ui_request": phase = .waiting
-        case "agent_settled", "disconnected": phase = .idle
-        default: break
-        }
-    }
-}
 
 enum PiProviderAccountIntent: String, Sendable {
     case manage
@@ -232,15 +218,24 @@ enum PiConnectionState: Equatable {
 final class AppState: ObservableObject {
     @Published var selectedSection: AppSection = .overview
     @Published var workspaceScope: PiWorkspaceScope = .workspace
-    @Published var connectionState: PiConnectionState = .ready
+    var connectionState: PiConnectionState {
+        get { sessionCoordinator.connectionState }
+        set { sessionCoordinator.connectionState = newValue }
+    }
     @Published var currentProject = ""
     @Published var currentProjectPath = ""
     @Published var composerText = ""
-    @Published var isPiRunning = false
+    var isPiRunning: Bool {
+        get { sessionCoordinator.isConnected }
+        set { sessionCoordinator.isConnected = newValue }
+    }
     @Published private(set) var messages: [PiChatMessage] = []
     @Published private(set) var activities: [PiActivity] = []
     @Published private(set) var uiRequest: PiUIRequest?
-    @Published private(set) var isGenerating = false
+    private(set) var isGenerating: Bool {
+        get { sessionCoordinator.isGenerating }
+        set { sessionCoordinator.isGenerating = newValue }
+    }
     @Published private(set) var agentStatus = "Ready"
     @Published private(set) var sessionName = "New session"
     @Published private(set) var sessionModel = "Model not selected"
@@ -272,10 +267,11 @@ final class AppState: ObservableObject {
     private var activeTaskId: String?
     private var isRefreshingCatalog = false
     private var needsCatalogRefresh = false
-    private var runLifecycle = PiRunLifecycle()
-    private var connectionRevision = UUID()
+    let sessionCoordinator = PiSessionCoordinator()
+    private var runtimeObservation: AnyCancellable?
+    private var connectionRevision: UUID { sessionCoordinator.revision }
 
-    let piClient = PiRPCClient()
+    var piClient: PiRPCClient { sessionCoordinator.client }
     let usageStore = AccountUsageStore()
     let taskStore = PiTaskStore()
     let figureArtifactStore: FigureArtifactStore
@@ -288,8 +284,7 @@ final class AppState: ObservableObject {
         let piRoot = PersonalPiRuntimeEnvironment.piRootURL
         knowledgeStore = KnowledgeLibraryStore(piRoot: piRoot)
         figureArtifactStore = FigureArtifactStore(
-            storageURL: piRoot
-                .appendingPathComponent("agent", isDirectory: true)
+            storageURL: PiRuntimeContext.current.agentDirectory
                 .appendingPathComponent("personal-pi-figure-artifacts.json")
         )
         piRootDirectory = piRoot.path
@@ -314,6 +309,10 @@ final class AppState: ObservableObject {
         }
         figureArtifactStore.selectLatest(sessionId: nil, cwd: currentProjectPath)
 
+        runtimeObservation = sessionCoordinator.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+
         if PiLaunchConfiguration.resolvedExecutable() == nil {
             connectionState = .unavailable(PiLaunchConfiguration.missingMessage)
         }
@@ -321,16 +320,14 @@ final class AppState: ObservableObject {
 
     func connectPi() {
         guard !isPiRunning, connectionState != .connecting else { return }
-        connectionRevision = UUID()
-        let revision = connectionRevision
-        connectionState = .connecting
+        let revision = sessionCoordinator.beginConnection()
         piClient.onEvent = { [weak self] event in
             guard let self, self.connectionRevision == revision else { return }
             self.handle(event)
         }
         piClient.onUIRequest = { [weak self] request in
             guard let self, self.connectionRevision == revision else { return }
-            self.runLifecycle.receive("extension_ui_request")
+            self.sessionCoordinator.receive("extension_ui_request")
             self.uiRequest = request
             self.taskStore.update(
                 id: self.activeTaskId,
@@ -344,7 +341,7 @@ final class AppState: ObservableObject {
         }
         piClient.onTermination = { [weak self] message in
             guard let self, self.connectionRevision == revision else { return }
-            self.runLifecycle.receive("disconnected")
+            self.sessionCoordinator.receive("disconnected")
             self.isPiRunning = false
             self.isGenerating = false
             self.connectionState = .unavailable(message)
@@ -449,7 +446,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             self.agentStatus = success ? "Stopped" : "Unable to stop"
             guard success else { return }
-            self.runLifecycle.receive("disconnected")
+            self.sessionCoordinator.receive("disconnected")
             self.isGenerating = false
             self.taskStore.update(
                 id: self.activeTaskId,
@@ -740,13 +737,13 @@ final class AppState: ObservableObject {
         taskStore.update(id: activeTaskId, state: .running, detail: "Pi is working")
         messages.append(PiChatMessage(id: UUID().uuidString, role: "user", text: text, isStreaming: false))
         activities = []
-        runLifecycle.receive("agent_start")
+        sessionCoordinator.receive("agent_start")
         isGenerating = true
         agentStatus = "Thinking…"
         let revision = connectionRevision
         piClient.sendPrompt(text) { [weak self] accepted, error in
             guard let self, self.connectionRevision == revision, !accepted else { return }
-            self.runLifecycle.receive("disconnected")
+            self.sessionCoordinator.receive("disconnected")
             self.isGenerating = false
             self.agentStatus = error ?? "Prompt rejected"
             self.taskStore.update(id: self.activeTaskId, state: .finished,
@@ -1190,7 +1187,7 @@ final class AppState: ObservableObject {
     }
 
     private func restartPiForScope() {
-        connectionRevision = UUID()
+        sessionCoordinator.invalidateConnection()
         if isGenerating {
             taskStore.update(
                 id: activeTaskId,
@@ -1206,7 +1203,7 @@ final class AppState: ObservableObject {
         uiRequest = nil
         availableCommands = Self.nativeCommands
         availableThinkingLevels = ["off"]
-        runLifecycle.receive("disconnected")
+        sessionCoordinator.receive("disconnected")
         isGenerating = false
         sessionFile = nil
         isSessionUtilityLoading = false
@@ -1301,8 +1298,7 @@ final class AppState: ObservableObject {
     }
 
     private func handle(_ event: PiStreamEvent) {
-        runLifecycle.receive(event.type)
-        isGenerating = runLifecycle.isActive
+        sessionCoordinator.receive(event.type)
         switch event.type {
         case "agent_start", "turn_start":
             isGenerating = true
@@ -1404,148 +1400,6 @@ final class AppState: ObservableObject {
     }
 }
 
-private extension String {
+extension String {
     var nonEmptyValue: String? { isEmpty ? nil : self }
-}
-
-enum PiSessionDirectoryResolver {
-    static func scanRoots(
-        piRoot: URL,
-        globalChatDirectory: String,
-        projectPaths: [String],
-        environmentSessionDirectory: String? = ProcessInfo.processInfo.environment["PI_CODING_AGENT_SESSION_DIR"],
-        homeDirectory: String = NSHomeDirectory()
-    ) -> [URL] {
-        let globalSettings = readSettings(
-            at: piRoot.appendingPathComponent("agent/settings.json")
-        )
-        let defaultRoot = piRoot
-            .appendingPathComponent("agent/sessions", isDirectory: true)
-            .standardizedFileURL
-        var roots = [defaultRoot]
-
-        let workingDirectories = [globalChatDirectory] + projectPaths
-        for workingDirectory in workingDirectories {
-            let projectSettings = readSettings(
-                at: URL(fileURLWithPath: workingDirectory, isDirectory: true)
-                    .appendingPathComponent(".pi/settings.json")
-            )
-            let effectiveSettings = PiSettingsFile.merge(globalSettings, projectSettings)
-            let configuredDirectory = environmentSessionDirectory?.nonEmptyValue
-                ?? (effectiveSettings["sessionDir"] as? String)?.nonEmptyValue
-            guard let configuredDirectory else { continue }
-            roots.append(
-                resolve(
-                    configuredDirectory,
-                    relativeTo: workingDirectory,
-                    homeDirectory: homeDirectory
-                )
-            )
-        }
-
-        var seen = Set<String>()
-        return roots.filter { root in
-            seen.insert(canonicalPath(root)).inserted
-        }
-    }
-
-    static func resolve(
-        _ rawPath: String,
-        relativeTo workingDirectory: String,
-        homeDirectory: String = NSHomeDirectory()
-    ) -> URL {
-        let expanded: String
-        if rawPath == "~" {
-            expanded = homeDirectory
-        } else if rawPath.hasPrefix("~/") {
-            expanded = (homeDirectory as NSString).appendingPathComponent(String(rawPath.dropFirst(2)))
-        } else if rawPath.hasPrefix("file://"), let fileURL = URL(string: rawPath), fileURL.isFileURL {
-            return fileURL.standardizedFileURL
-        } else {
-            expanded = rawPath
-        }
-
-        if (expanded as NSString).isAbsolutePath {
-            return URL(fileURLWithPath: expanded, isDirectory: true).standardizedFileURL
-        }
-        return URL(fileURLWithPath: expanded, isDirectory: true, relativeTo: URL(fileURLWithPath: workingDirectory, isDirectory: true))
-            .absoluteURL
-            .standardizedFileURL
-    }
-
-    private static func readSettings(at url: URL) -> [String: Any] {
-        (try? PiSettingsFile.read(url)) ?? [:]
-    }
-
-    private static func canonicalPath(_ url: URL) -> String {
-        url.standardizedFileURL.resolvingSymlinksInPath().path
-    }
-}
-
-enum PiSessionCatalog {
-    static func allSessions(at roots: [URL]) -> [PiSavedSession] {
-        var sessionsByPath: [String: PiSavedSession] = [:]
-        for root in roots {
-            for session in allSessions(at: root) {
-                let path = URL(fileURLWithPath: session.path)
-                    .standardizedFileURL
-                    .resolvingSymlinksInPath()
-                    .path
-                sessionsByPath[path] = session
-            }
-        }
-        return sessionsByPath.values.sorted { $0.timestamp > $1.timestamp }
-    }
-
-    static func allSessions(at root: URL) -> [PiSavedSession] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: []
-        ) else { return [] }
-
-        var sessions: [PiSavedSession] = []
-        for case let url as URL in enumerator {
-            guard url.pathExtension == "jsonl" else { continue }
-            let header = readHeader(from: url) ?? [:]
-            guard header["type"] as? String == "session" else { continue }
-            let id = header["id"] as? String ?? url.deletingPathExtension().lastPathComponent
-            let cwd = header["cwd"] as? String ?? ""
-            let timestampText = header["timestamp"] as? String
-            let timestamp = timestampText.flatMap { date(from: $0) }
-                ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-                ?? Date.distantPast
-            sessions.append(PiSavedSession(id: id, path: url.path, timestamp: timestamp, cwd: cwd))
-        }
-        return sessions.sorted { $0.timestamp > $1.timestamp }
-    }
-
-    static func projectGroups(from sessions: [PiSavedSession]) -> [PiProjectGroup] {
-        Dictionary(grouping: sessions, by: \.cwd)
-            .map { cwd, sessions in
-                PiProjectGroup(
-                    id: cwd.isEmpty ? "unknown" : cwd,
-                    cwd: cwd,
-                    sessions: sessions.sorted { $0.timestamp > $1.timestamp }
-                )
-            }
-            .sorted { lhs, rhs in
-                (lhs.latestSession?.timestamp ?? .distantPast) > (rhs.latestSession?.timestamp ?? .distantPast)
-            }
-    }
-
-    private static func readHeader(from url: URL) -> [String: Any]? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        let data = handle.readData(ofLength: 8192)
-        guard let firstLine = String(data: data, encoding: .utf8)?.split(separator: "\n", maxSplits: 1).first,
-              let lineData = firstLine.data(using: .utf8) else { return nil }
-        return try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
-    }
-
-    private static func date(from text: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: text)
-    }
 }

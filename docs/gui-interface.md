@@ -9,13 +9,14 @@ SwiftUI Views
     │  用户操作 / Published 状态
     ▼
 AppState (@MainActor)
-    ├── PiRPCClient ── stdin/stdout JSONL ── pi --mode rpc
+    ├── PiSessionCoordinator ── PiRPCClient ── stdin/stdout JSONL ── pi --mode rpc
     ├── PiProviderAuthBridge ── Node bridge ── Pi ModelRuntime
     ├── PiPackageBridge ── Node bridge ── Pi SettingsManager / PackageManager
     ├── AccountUsageStore ── Pi auth check + local Codex App Server
     ├── PiTaskStore ── local JSON
     ├── FigureArtifactStore ── structured tool details + local JSON index
     ├── PersonalPiPluginRegistry ── bundled Pi Packages + GUI manifests
+    ├── KnowledgeLibraryStore ── KnowledgeCoreClient ── Python / SQLite
     └── Session Catalog / Workspace Inspector ── filesystem + Git
 ~~~
 
@@ -26,6 +27,25 @@ AppState (@MainActor)
 - View 不直接写 Pi RPC JSON，也不直接解析 auth.json。
 - 阻塞式文件扫描、Git、Node bridge 和进程操作不得在主线程执行。
 - Global/Project 路径必须由当前用户目录和所选项目动态推导。
+
+### 1.1 公共基础模块
+
+| 模块 | 责任与调用约束 |
+|---|---|
+| PiRuntimeContext | 统一 GUI 路径解析；默认 `~/.pi`，原生 `PI_CODING_AGENT_DIR` 指定认证/设置目录，`PERSONAL_PI_DATA_ROOT` 可独立指定数据根 |
+| PiSessionCoordinator | 持有 RPC client、连接代次和运行状态；AppState 转发观察，不另存一份连接状态 |
+| SessionCatalog.swift | 会话目录解析、扫描与分组；由 AppState 在后台调度 |
+| PiSettingsEditor / PiSettingsFile | 设置表单状态、作用域、校验、合并和读写；View 只绑定、呈现并触发运行时重载 |
+| PiProcessRunner | 后台一次性进程：并发排空 stdout/stderr、限制捕获大小、超时终止，供知识库、包管理和账户的一次性调用复用 |
+
+RPC 与交互式 OAuth 使用专用长连接，不套用一次性 runner。RPC 的 stdin 写入在每连接独立
+队列执行，管道关闭以 EPIPE 错误处理，不让 SIGPIPE 终止 GUI。读取事件按主队列顺序交付。
+Knowledge Python 环境首次调用按锁文件同步；同一进程内，锁文件未变且 Python 仍存在时复用准备状态。
+
+数据根优先级：显式 `PERSONAL_PI_DATA_ROOT` → 原生 agent 目录的父目录 → `~/.pi`。
+agent 目录优先级：显式 `PI_CODING_AGENT_DIR` → `<数据根>/agent`。两者同时设置时独立保留。
+`PERSONAL_PI_KNOWLEDGE_ENVIRONMENT` 可覆盖知识库 Python 环境。启动子进程时传递规范化后的路径，
+保证 GUI、Pi 和插件使用同一配置。Figure/Knowledge 包仍能独立被 Pi CLI 加载，不依赖 GUI 进程。
 
 ## 2. App 入口与页面路由
 
@@ -97,7 +117,7 @@ AppState 标记为 @MainActor。View 可以订阅 Published 状态并调用 acti
 
 PiRunLifecycle 区分 idle/running/waiting。`turn_end`、`agent_end`、`extension_error`
 不是整个任务完成；只有 `agent_settled`、明确中止或断开连接才结束运行。
-PiRPCClient 的可变连接状态与回调在 MainActor 串行处理。每次连接有独立 generation，
+PiRPCClient 的可变连接状态与回调在 MainActor 串行处理，阻塞写入在独立队列。每次连接有独立 generation，
 旧进程的数据、退出事件和定时器不得更新新连接。断开会清空缓冲区并取消、完成所有
 pending 请求。普通请求默认 30 秒，启动 5 秒，压缩/内部扩展命令 600 秒。
 Pi 0.84.x 的 new_session 空闲超时回退只允许当前连接触发，取消不触发重启。

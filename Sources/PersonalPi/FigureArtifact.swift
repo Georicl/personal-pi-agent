@@ -114,8 +114,7 @@ final class FigureArtifactStore: ObservableObject {
 
     init(storageURL: URL? = nil) {
         self.storageURL = storageURL
-            ?? PersonalPiRuntimeEnvironment.piRootURL
-                .appendingPathComponent("agent", isDirectory: true)
+            ?? PiRuntimeContext.current.agentDirectory
                 .appendingPathComponent("personal-pi-figure-artifacts.json")
         load()
     }

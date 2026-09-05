@@ -91,21 +91,26 @@ function copyIfChanged(source, destination) {
 }
 
 function resolvedPiRoot() {
-  if (process.env.PERSONAL_PI_DATA_ROOT) {
-    return resolve(process.env.PERSONAL_PI_DATA_ROOT);
+  if (process.env.PERSONAL_PI_DATA_ROOT?.trim()) {
+    return expandedRuntimePath(process.env.PERSONAL_PI_DATA_ROOT);
   }
-  const agentDirectory = resolve(
-    process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
+  const agentDirectory = expandedRuntimePath(
+    process.env.PI_CODING_AGENT_DIR?.trim() || join(homedir(), ".pi", "agent"),
   );
   return dirname(agentDirectory);
 }
 
+function expandedRuntimePath(value) {
+  const path = value.trim();
+  return resolve(path === "~" ? homedir() : path.startsWith("~/") ? join(homedir(), path.slice(2)) : path);
+}
+
 async function managedPython(cwd, signal, onUpdate) {
-  const agentDirectory = resolve(
-    process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"),
+  const agentDirectory = expandedRuntimePath(
+    process.env.PI_CODING_AGENT_DIR?.trim() || join(resolvedPiRoot(), "agent"),
   );
-  const environmentRoot = resolve(
-    process.env.PERSONAL_PI_KNOWLEDGE_ENVIRONMENT ||
+  const environmentRoot = expandedRuntimePath(
+    process.env.PERSONAL_PI_KNOWLEDGE_ENVIRONMENT?.trim() ||
       join(agentDirectory, "environments", "knowledge"),
   );
   mkdirSync(environmentRoot, { recursive: true });
@@ -124,7 +129,7 @@ async function managedPython(cwd, signal, onUpdate) {
           cwd,
           signal,
           timeoutMs: 600000,
-          env: { ...process.env, UV_NO_PROGRESS: "1" },
+          env: { ...process.env, UV_NO_PROGRESS: "1", UV_PROJECT_ENVIRONMENT: join(environmentRoot, ".venv") },
         },
       );
       if (result.code !== 0) {

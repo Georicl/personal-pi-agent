@@ -121,11 +121,11 @@ struct RPCConnectionTests {
         let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Fixtures/rpc_peer.py")
         return PiRPCClient(executable: "/usr/bin/python3", arguments: ["-u", fixture.path],
-                           startupTimeout: 2, requestTimeout: 0.15, newSessionTimeout: 0.2)
+                           startupTimeout: 5, requestTimeout: 0.15, newSessionTimeout: 0.2)
     }
 
     private func waitFor(_ predicate: () -> Bool) async throws {
-        for _ in 0..<400 {
+        for _ in 0..<1000 {
             if predicate() { return }
             try await Task.sleep(for: .milliseconds(10))
         }
@@ -148,7 +148,9 @@ struct RPCConnectionTests {
             second.append(ok)
         }
         try await waitFor { !second.isEmpty }
-        try await Task.sleep(for: .seconds(2))
+        // Hosted macOS runners can spend seconds cold-starting system Python.
+        // Use the production launch budget, then cross the cancelled deadline.
+        try await Task.sleep(for: .seconds(5))
         #expect(first == [false])
         #expect(second == [true])
         #expect(client.processIdentifier != nil)
@@ -202,6 +204,22 @@ struct RPCConnectionTests {
         client.requestMessages { _ in completed = true }
         try await waitFor { terminated && completed }
         #expect(client.processIdentifier == nil)
+        #expect(client.pendingRequestCount == 0)
+    }
+
+    @Test("RPC pipe back-pressure does not block MainActor")
+    func nonblockingWrites() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = makeClient()
+        defer { client.stop() }
+        var connected = false
+        client.start(workingDirectory: root.appendingPathComponent("blocked").path) { ok, _ in connected = ok }
+        try await waitFor { connected }
+        let start = ContinuousClock.now
+        client.sendPrompt(String(repeating: "x", count: 1_000_000))
+        #expect(start.duration(to: .now) < .seconds(1))
+        client.stop()
         #expect(client.pendingRequestCount == 0)
     }
 }

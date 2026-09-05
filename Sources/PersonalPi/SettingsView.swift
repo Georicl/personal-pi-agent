@@ -2,83 +2,22 @@ import Foundation
 import SwiftUI
 import AppKit
 
-private enum PiSettingsScope: String, CaseIterable, Identifiable {
-    case global = "Global"
-    case project = "Project"
-    case effective = "Effective"
-
-    var id: String { rawValue }
-}
-
-enum PiOptionalSetting: String, CaseIterable, Identifiable {
-    case inherited
-    case enabled
-    case disabled
-
-    var id: String { rawValue }
-}
-
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage(AppLanguage.storageKey) private var languageRawValue = AppLanguage.system.rawValue
 
-    @State private var selectedScope: PiSettingsScope = .global
-    @State private var baseDocument: [String: Any] = [:]
-    @State private var globalDocument: [String: Any] = [:]
-    @State private var projectDocument: [String: Any] = [:]
-    @State private var provider = ""
-    @State private var model = ""
-    @State private var thinkingLevel = ""
-    @State private var enabledModels = ""
-    @State private var modelThinkingLevels: [String: String] = [:]
+    @StateObject private var editor = PiSettingsEditor()
     @State private var selectedThinkingModel = ""
-    @State private var thinkingBudgetMinimal = ""
-    @State private var thinkingBudgetLow = ""
-    @State private var thinkingBudgetMedium = ""
-    @State private var thinkingBudgetHigh = ""
     @State private var showingAdvancedThinking = false
-    @State private var theme = ""
-    @State private var compaction = PiOptionalSetting.inherited
-    @State private var compactionReserveTokens = ""
-    @State private var compactionKeepRecentTokens = ""
-    @State private var retry = PiOptionalSetting.inherited
-    @State private var retryCount = ""
-    @State private var retryBaseDelayMs = ""
-    @State private var providerMaxRetryDelayMs = ""
-    @State private var steeringMode = ""
-    @State private var followUpMode = ""
-    @State private var transport = ""
-    @State private var imageAutoResize = PiOptionalSetting.inherited
-    @State private var imageBlocking = PiOptionalSetting.inherited
-    @State private var skillCommands = PiOptionalSetting.inherited
     @State private var showingAdvancedRuntime = false
-    @State private var httpProxy = ""
-    @State private var httpIdleTimeoutMs = ""
-    @State private var websocketConnectTimeoutMs = ""
-    @State private var providerTimeoutMs = ""
-    @State private var providerMaxRetries = ""
-    @State private var sessionDirectory = ""
-    @State private var shellPath = ""
-    @State private var shellCommandPrefix = ""
-    @State private var npmCommand = ""
-    @State private var branchSummaryReserveTokens = ""
-    @State private var branchSummarySkipPrompt = PiOptionalSetting.inherited
-    @State private var anthropicExtraUsageWarning = PiOptionalSetting.inherited
-    @State private var figurePythonPath = ""
-    @State private var figureKeepWorkFiles = PiOptionalSetting.inherited
-    @State private var overridesTools = false
-    @State private var selectedTools = Set<String>()
-    @State private var status = ""
-    @State private var hasSourceError = false
-    @State private var statusIsError = false
     @State private var isRefreshingModels = false
 
-    private let builtInTools = ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"]
+    private let builtInTools = PiSettingsEditor.builtInTools
 
-    private var isReadOnly: Bool { selectedScope == .effective }
+    private var isReadOnly: Bool { editor.selectedScope == .effective }
 
     private var globalURL: URL {
-        URL(fileURLWithPath: appState.piRootDirectory).appendingPathComponent("agent/settings.json")
+        PiRuntimeContext.current.settingsURL
     }
 
     private var projectURL: URL {
@@ -86,11 +25,11 @@ struct SettingsView: View {
     }
 
     private var agentDirectory: URL {
-        URL(fileURLWithPath: appState.piRootDirectory).appendingPathComponent("agent", isDirectory: true)
+        PiRuntimeContext.current.agentDirectory
     }
 
     private var selectedURL: URL? {
-        switch selectedScope {
+        switch editor.selectedScope {
         case .global: globalURL
         case .project: appState.workspaceScope == .workspace ? projectURL : nil
         case .effective: nil
@@ -114,10 +53,10 @@ struct SettingsView: View {
         .padding(28)
         .frame(maxWidth: 1050, alignment: .leading)
         .task { prepareScopeAndLoad() }
-        .onChange(of: selectedScope) { _ in load() }
+        .onChange(of: editor.selectedScope) { _ in load() }
         .onChange(of: appState.activeWorkingDirectory) { _ in
-            if appState.workspaceScope == .global && selectedScope == .project {
-                selectedScope = .global
+            if appState.workspaceScope == .global && editor.selectedScope == .project {
+                editor.selectedScope = .global
             } else {
                 load()
             }
@@ -141,7 +80,7 @@ struct SettingsView: View {
     private var scopeCard: some View {
         SettingsCard(title: "Configuration scope", subtitle: scopeSubtitle) {
             VStack(alignment: .leading, spacing: 13) {
-                Picker("Scope", selection: $selectedScope) {
+                Picker("Scope", selection: $editor.selectedScope) {
                     ForEach(scopeChoices) { scope in
                         Text(LocalizedStringKey(scope.rawValue)).tag(scope)
                     }
@@ -187,7 +126,7 @@ struct SettingsView: View {
                     defaultModelRow
 
                     SettingsPickerRow(title: "Thinking level") {
-                        Picker("Thinking level", selection: $thinkingLevel) {
+                        Picker("Thinking level", selection: $editor.thinkingLevel) {
                             Text(LocalizedStringKey(inheritLabel)).tag("")
                             ForEach(defaultThinkingLevelChoices, id: \.self) { level in
                                 Text(LocalizedStringKey(choiceLabel(level))).tag(level)
@@ -203,10 +142,10 @@ struct SettingsView: View {
 
                     DisclosureGroup("Advanced thinking budgets", isExpanded: $showingAdvancedThinking) {
                         VStack(spacing: 10) {
-                            SettingsTextRow(title: "Minimal budget", placeholder: "Pi default", text: $thinkingBudgetMinimal)
-                            SettingsTextRow(title: "Low budget", placeholder: "Pi default", text: $thinkingBudgetLow)
-                            SettingsTextRow(title: "Medium budget", placeholder: "Pi default", text: $thinkingBudgetMedium)
-                            SettingsTextRow(title: "High budget", placeholder: "Pi default", text: $thinkingBudgetHigh)
+                            SettingsTextRow(title: "Minimal budget", placeholder: "Pi default", text: $editor.thinkingBudgetMinimal)
+                            SettingsTextRow(title: "Low budget", placeholder: "Pi default", text: $editor.thinkingBudgetLow)
+                            SettingsTextRow(title: "Medium budget", placeholder: "Pi default", text: $editor.thinkingBudgetMedium)
+                            SettingsTextRow(title: "High budget", placeholder: "Pi default", text: $editor.thinkingBudgetHigh)
                         }
                         .padding(.top, 10)
                         .disabled(isReadOnly)
@@ -214,7 +153,7 @@ struct SettingsView: View {
                     .font(Theme.sans(11.5, weight: .medium))
                     .foregroundStyle(Theme.secondary)
 
-                    SettingsTextRow(title: "Pi CLI theme", placeholder: selectedScope == .project ? "Inherit Global theme" : "Pi default (dark)", text: $theme)
+                    SettingsTextRow(title: "Pi CLI theme", placeholder: editor.selectedScope == .project ? "Inherit Global theme" : "Pi default (dark)", text: $editor.theme)
                         .disabled(isReadOnly)
                 }
 
@@ -227,7 +166,7 @@ struct SettingsView: View {
 
     private var defaultProviderRow: some View {
         SettingsPickerRow(title: "Provider") {
-            Picker("Provider", selection: $provider) {
+            Picker("Provider", selection: $editor.provider) {
                 Text(LocalizedStringKey(inheritLabel)).tag("")
                 ForEach(providerChoices, id: \.self) { providerID in
                     Text(providerID).tag(providerID)
@@ -236,11 +175,11 @@ struct SettingsView: View {
             .labelsHidden()
             .frame(width: 300)
             .disabled(isReadOnly)
-            .onChange(of: provider) { newProvider in
+            .onChange(of: editor.provider) { newProvider in
                 let resolvedProvider = newProvider.isEmpty ? inheritedProvider : newProvider
                 let available = appState.availableModels.filter { $0.provider == resolvedProvider }
-                if !available.isEmpty && !available.contains(where: { $0.modelId == model }) {
-                    model = available.first?.modelId ?? ""
+                if !available.isEmpty && !available.contains(where: { $0.modelId == editor.model }) {
+                    editor.model = available.first?.modelId ?? ""
                 }
             }
             .accessibilityIdentifier("default-provider-picker")
@@ -249,7 +188,7 @@ struct SettingsView: View {
 
     private var defaultModelRow: some View {
         SettingsPickerRow(title: "Model") {
-            Picker("Model", selection: $model) {
+            Picker("Model", selection: $editor.model) {
                 Text(LocalizedStringKey(inheritLabel)).tag("")
                 ForEach(modelChoices, id: \.self) { modelID in
                     Text(modelChoiceLabel(modelID)).tag(modelID)
@@ -296,14 +235,14 @@ struct SettingsView: View {
                 .disabled(isReadOnly || appState.availableModels.isEmpty)
                 .accessibilityIdentifier("enabled-models-menu")
                 if !enabledModelPatterns.isEmpty && !isReadOnly {
-                    Button("Clear") { enabledModels = "" }
+                    Button("Clear") { editor.enabledModels = "" }
                         .buttonStyle(.borderless)
                 }
                 Spacer()
             }
 
             DisclosureGroup("Advanced model patterns") {
-                TextEditor(text: $enabledModels)
+                TextEditor(text: $editor.enabledModels)
                     .font(Theme.mono(10.5))
                     .scrollContentBackground(.hidden)
                     .padding(6)
@@ -365,7 +304,7 @@ struct SettingsView: View {
 
     private var providerChoices: [String] {
         var choices = Set(appState.availableModels.map(\.provider))
-        if !provider.isEmpty { choices.insert(provider) }
+        if !editor.provider.isEmpty { choices.insert(editor.provider) }
         return choices.sorted()
     }
 
@@ -373,7 +312,7 @@ struct SettingsView: View {
         var choices = Set(appState.availableModels.filter {
             $0.provider == effectiveProviderForModelSelection
         }.map(\.modelId))
-        if !model.isEmpty { choices.insert(model) }
+        if !editor.model.isEmpty { choices.insert(editor.model) }
         return choices.sorted()
     }
 
@@ -384,31 +323,31 @@ struct SettingsView: View {
     }
 
     private var inheritedProvider: String {
-        selectedScope == .project ? globalDocument["defaultProvider"] as? String ?? "" : ""
+        editor.selectedScope == .project ? editor.globalDocument["defaultProvider"] as? String ?? "" : ""
     }
 
     private var effectiveProviderForModelSelection: String {
-        provider.isEmpty ? inheritedProvider : provider
+        editor.provider.isEmpty ? inheritedProvider : editor.provider
     }
 
     private var inheritedModel: String {
-        selectedScope == .project ? globalDocument["defaultModel"] as? String ?? "" : ""
+        editor.selectedScope == .project ? editor.globalDocument["defaultModel"] as? String ?? "" : ""
     }
 
     private var effectiveModelForThinking: String {
-        model.isEmpty ? inheritedModel : model
+        editor.model.isEmpty ? inheritedModel : editor.model
     }
 
     private var defaultThinkingLevelChoices: [String] {
         var choices = selectedDefaultModel?.supportedThinkingLevels ?? AppState.thinkingLevels
-        if !thinkingLevel.isEmpty && !choices.contains(thinkingLevel) {
-            choices.append(thinkingLevel)
+        if !editor.thinkingLevel.isEmpty && !choices.contains(editor.thinkingLevel) {
+            choices.append(editor.thinkingLevel)
         }
         return choices
     }
 
     private var enabledModelPatterns: [String] {
-        enabledModels.split { $0.isNewline }
+        editor.enabledModels.split { $0.isNewline }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
@@ -420,7 +359,7 @@ struct SettingsView: View {
 
     private var thinkingModelChoices: [String] {
         var choices = Set(appState.availableModels.map(\.identity))
-        choices.formUnion(modelThinkingLevels.keys)
+        choices.formUnion(editor.modelThinkingLevels.keys)
         return choices.sorted()
     }
 
@@ -431,14 +370,14 @@ struct SettingsView: View {
     }
 
     private var modelThinkingSummary: LocalizedStringKey {
-        if modelThinkingLevels.isEmpty { return "No per-model overrides" }
-        return "\(modelThinkingLevels.count) per-model overrides"
+        if editor.modelThinkingLevels.isEmpty { return "No per-model overrides" }
+        return "\(editor.modelThinkingLevels.count) per-model overrides"
     }
 
     private var selectedModelThinkingChoices: [String] {
         var choices = appState.availableModels.first(where: { $0.identity == selectedThinkingModel })?
             .supportedThinkingLevels ?? AppState.thinkingLevels
-        if let current = modelThinkingLevels[selectedThinkingModel], !choices.contains(current) {
+        if let current = editor.modelThinkingLevels[selectedThinkingModel], !choices.contains(current) {
             choices.append(current)
         }
         return choices
@@ -446,10 +385,10 @@ struct SettingsView: View {
 
     private var thinkingOverrideBinding: Binding<String> {
         Binding(
-            get: { modelThinkingLevels[selectedThinkingModel] ?? "" },
+            get: { editor.modelThinkingLevels[selectedThinkingModel] ?? "" },
             set: { value in
-                if value.isEmpty { modelThinkingLevels.removeValue(forKey: selectedThinkingModel) }
-                else { modelThinkingLevels[selectedThinkingModel] = value }
+                if value.isEmpty { editor.modelThinkingLevels.removeValue(forKey: selectedThinkingModel) }
+                else { editor.modelThinkingLevels[selectedThinkingModel] = value }
             }
         )
     }
@@ -477,7 +416,7 @@ struct SettingsView: View {
         } else {
             patterns.append(identity)
         }
-        enabledModels = patterns.joined(separator: "\n")
+        editor.enabledModels = patterns.joined(separator: "\n")
     }
 
     private var providerLoginRow: some View {
@@ -512,24 +451,24 @@ struct SettingsView: View {
     private var behaviorCard: some View {
         SettingsCard(title: "Agent behavior", subtitle: "Compaction, retry, delivery and image handling are applied by the Pi runtime.") {
             VStack(spacing: 13) {
-                optionalSettingRow(title: "Auto-compaction", selection: $compaction)
-                SettingsTextRow(title: "Reserved response tokens", placeholder: selectedScope == .project ? "Inherit" : "Pi default (16384)", text: $compactionReserveTokens)
+                optionalSettingRow(title: "Auto-compaction", selection: $editor.compaction)
+                SettingsTextRow(title: "Reserved response tokens", placeholder: editor.selectedScope == .project ? "Inherit" : "Pi default (16384)", text: $editor.compactionReserveTokens)
                     .disabled(isReadOnly)
-                SettingsTextRow(title: "Recent tokens to keep", placeholder: selectedScope == .project ? "Inherit" : "Pi default (20000)", text: $compactionKeepRecentTokens)
+                SettingsTextRow(title: "Recent tokens to keep", placeholder: editor.selectedScope == .project ? "Inherit" : "Pi default (20000)", text: $editor.compactionKeepRecentTokens)
                     .disabled(isReadOnly)
-                optionalSettingRow(title: "Automatic retry", selection: $retry)
-                SettingsTextRow(title: "Maximum retries", placeholder: selectedScope == .project ? "Inherit" : "Pi default (3)", text: $retryCount)
+                optionalSettingRow(title: "Automatic retry", selection: $editor.retry)
+                SettingsTextRow(title: "Maximum retries", placeholder: editor.selectedScope == .project ? "Inherit" : "Pi default (3)", text: $editor.retryCount)
                     .disabled(isReadOnly)
-                SettingsTextRow(title: "Retry base delay (ms)", placeholder: selectedScope == .project ? "Inherit" : "Pi default (2000)", text: $retryBaseDelayMs)
+                SettingsTextRow(title: "Retry base delay (ms)", placeholder: editor.selectedScope == .project ? "Inherit" : "Pi default (2000)", text: $editor.retryBaseDelayMs)
                     .disabled(isReadOnly)
-                SettingsTextRow(title: "Maximum retry delay (ms)", placeholder: selectedScope == .project ? "Inherit" : "Pi default (60000)", text: $providerMaxRetryDelayMs)
+                SettingsTextRow(title: "Maximum retry delay (ms)", placeholder: editor.selectedScope == .project ? "Inherit" : "Pi default (60000)", text: $editor.providerMaxRetryDelayMs)
                     .disabled(isReadOnly)
-                choiceRow(title: "Steering delivery", selection: $steeringMode, options: ["one-at-a-time", "all"])
-                choiceRow(title: "Follow-up delivery", selection: $followUpMode, options: ["one-at-a-time", "all"])
-                choiceRow(title: "Provider transport", selection: $transport, options: ["auto", "sse", "websocket", "websocket-cached"])
-                optionalSettingRow(title: "Resize large images", selection: $imageAutoResize)
-                optionalSettingRow(title: "Block images to model", selection: $imageBlocking)
-                optionalSettingRow(title: "Skill slash commands", selection: $skillCommands)
+                choiceRow(title: "Steering delivery", selection: $editor.steeringMode, options: ["one-at-a-time", "all"])
+                choiceRow(title: "Follow-up delivery", selection: $editor.followUpMode, options: ["one-at-a-time", "all"])
+                choiceRow(title: "Provider transport", selection: $editor.transport, options: ["auto", "sse", "websocket", "websocket-cached"])
+                optionalSettingRow(title: "Resize large images", selection: $editor.imageAutoResize)
+                optionalSettingRow(title: "Block images to model", selection: $editor.imageBlocking)
+                optionalSettingRow(title: "Skill slash commands", selection: $editor.skillCommands)
             }
         }
     }
@@ -537,8 +476,8 @@ struct SettingsView: View {
     private var toolsCard: some View {
         SettingsCard(title: "Built-in tools", subtitle: "When no override is set, Pi uses its standard defaults or the Global list.") {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle(isOn: $overridesTools) {
-                    Text(LocalizedStringKey(selectedScope == .project ? "Override Global tool list" : "Set an explicit tool list"))
+                Toggle(isOn: $editor.overridesTools) {
+                    Text(LocalizedStringKey(editor.selectedScope == .project ? "Override Global tool list" : "Set an explicit tool list"))
                 }
                     .font(Theme.sans(12.5))
                     .disabled(isReadOnly)
@@ -547,10 +486,10 @@ struct SettingsView: View {
                     ForEach(builtInTools, id: \.self) { tool in
                         Toggle(tool, isOn: toolBinding(tool))
                             .font(Theme.mono(10.5))
-                            .disabled(isReadOnly || !overridesTools)
+                            .disabled(isReadOnly || !editor.overridesTools)
                     }
                 }
-                .opacity(overridesTools ? 1 : 0.45)
+                .opacity(editor.overridesTools ? 1 : 0.45)
             }
         }
     }
@@ -565,13 +504,13 @@ struct SettingsView: View {
                     advancedSection("Figures") {
                         SettingsTextRow(
                             title: "Python executable override",
-                            placeholder: selectedScope == .project ? "Inherit managed uv environment" : "Managed uv environment",
-                            text: $figurePythonPath
+                            placeholder: editor.selectedScope == .project ? "Inherit managed uv environment" : "Managed uv environment",
+                            text: $editor.figurePythonPath
                         )
                         .disabled(isReadOnly)
                         optionalSettingRow(
                             title: "Keep figure work files",
-                            selection: $figureKeepWorkFiles
+                            selection: $editor.figureKeepWorkFiles
                         )
                         Text("By default Personal Pi keeps only PNG, TIFF and PDF outputs. Source code, requests, validation JSON and logs are retained only when explicitly enabled.")
                             .font(Theme.sans(9.5))
@@ -583,28 +522,28 @@ struct SettingsView: View {
                         SettingsTextRow(
                             title: "HTTP proxy",
                             placeholder: "Global only · http://127.0.0.1:7890",
-                            text: $httpProxy
+                            text: $editor.httpProxy
                         )
-                        .disabled(isReadOnly || selectedScope == .project)
+                        .disabled(isReadOnly || editor.selectedScope == .project)
                         Text("Pi reads HTTP proxy from Global settings before project configuration is loaded.")
                             .font(Theme.sans(9.5))
                             .foregroundStyle(Theme.faint)
                             .padding(.leading, 166)
-                        SettingsTextRow(title: "HTTP idle timeout (ms)", placeholder: inheritLabel, text: $httpIdleTimeoutMs)
+                        SettingsTextRow(title: "HTTP idle timeout (ms)", placeholder: inheritLabel, text: $editor.httpIdleTimeoutMs)
                             .disabled(isReadOnly)
-                        SettingsTextRow(title: "WebSocket connect timeout (ms)", placeholder: inheritLabel, text: $websocketConnectTimeoutMs)
+                        SettingsTextRow(title: "WebSocket connect timeout (ms)", placeholder: inheritLabel, text: $editor.websocketConnectTimeoutMs)
                             .disabled(isReadOnly)
-                        SettingsTextRow(title: "Provider timeout (ms)", placeholder: inheritLabel, text: $providerTimeoutMs)
+                        SettingsTextRow(title: "Provider timeout (ms)", placeholder: inheritLabel, text: $editor.providerTimeoutMs)
                             .disabled(isReadOnly)
-                        SettingsTextRow(title: "Provider maximum retries", placeholder: inheritLabel, text: $providerMaxRetries)
+                        SettingsTextRow(title: "Provider maximum retries", placeholder: inheritLabel, text: $editor.providerMaxRetries)
                             .disabled(isReadOnly)
                     }
 
                     advancedSection("Session storage") {
                         SettingsTextRow(
                             title: "Session directory",
-                            placeholder: selectedScope == .project ? "Inherit" : "~/.pi/agent/sessions",
-                            text: $sessionDirectory
+                            placeholder: editor.selectedScope == .project ? "Inherit" : "~/.pi/agent/sessions",
+                            text: $editor.sessionDirectory
                         )
                         .disabled(isReadOnly)
                         Text("Relative paths are resolved from the active Project or Global Chat directory. The session catalog always keeps Pi's default directory visible.")
@@ -620,23 +559,23 @@ struct SettingsView: View {
                         }
                     }
                     advancedSection("Shell & package commands") {
-                        SettingsTextRow(title: "Shell path", placeholder: selectedScope == .project ? "Inherit" : "Pi default shell", text: $shellPath)
+                        SettingsTextRow(title: "Shell path", placeholder: editor.selectedScope == .project ? "Inherit" : "Pi default shell", text: $editor.shellPath)
                             .disabled(isReadOnly)
-                        SettingsTextRow(title: "Shell command prefix", placeholder: inheritLabel, text: $shellCommandPrefix)
+                        SettingsTextRow(title: "Shell command prefix", placeholder: inheritLabel, text: $editor.shellCommandPrefix)
                             .disabled(isReadOnly)
                         SettingsMultilineTextRow(
                             title: "npm command",
                             help: "One executable or argument per line, for example npm on the first line.",
-                            text: $npmCommand
+                            text: $editor.npmCommand
                         )
                         .disabled(isReadOnly)
                     }
 
                     advancedSection("Branch summaries & warnings") {
-                        SettingsTextRow(title: "Branch summary reserve tokens", placeholder: inheritLabel, text: $branchSummaryReserveTokens)
+                        SettingsTextRow(title: "Branch summary reserve tokens", placeholder: inheritLabel, text: $editor.branchSummaryReserveTokens)
                             .disabled(isReadOnly)
-                        optionalSettingRow(title: "Skip branch-summary prompt", selection: $branchSummarySkipPrompt)
-                        optionalSettingRow(title: "Anthropic extra-usage warning", selection: $anthropicExtraUsageWarning)
+                        optionalSettingRow(title: "Skip branch-summary prompt", selection: $editor.branchSummarySkipPrompt)
+                        optionalSettingRow(title: "Anthropic extra-usage warning", selection: $editor.anthropicExtraUsageWarning)
                     }
                 }
                 .padding(.top, 14)
@@ -665,24 +604,24 @@ struct SettingsView: View {
 
     private var saveBar: some View {
         HStack(spacing: 12) {
-            if !status.isEmpty {
-                Text(LocalizedStringKey(status))
+            if !editor.status.isEmpty {
+                Text(LocalizedStringKey(editor.status))
                     .font(Theme.mono(10.5))
-                    .foregroundStyle(statusIsError ? Theme.danger : Theme.muted)
+                    .foregroundStyle(editor.statusIsError ? Theme.danger : Theme.muted)
                     .lineLimit(2)
             }
             Spacer()
             if !isReadOnly {
                 Button("Save settings") { save() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(hasSourceError)
+                    .disabled(editor.hasSourceError)
             }
         }
         .padding(.top, 2)
     }
 
     private var scopeSubtitle: LocalizedStringKey {
-        switch selectedScope {
+        switch editor.selectedScope {
         case .global: "Applies to every Pi session unless a project overrides it."
         case .project: "Applies only while \(appState.workspace.name) is the active project."
         case .effective:
@@ -693,7 +632,7 @@ struct SettingsView: View {
     }
 
     private var pathLabel: String {
-        if selectedScope == .effective {
+        if editor.selectedScope == .effective {
             return appState.workspaceScope == .workspace ? "Global + \(PiFormat.path(projectURL.path))" : "Global configuration"
         }
         guard let selectedURL else { return "No project selected" }
@@ -701,7 +640,7 @@ struct SettingsView: View {
     }
 
     private var inheritLabel: String {
-        selectedScope == .project ? "Inherit Global" : "Pi default"
+        editor.selectedScope == .project ? "Inherit Global" : "Pi default"
     }
 
     @ViewBuilder
@@ -735,24 +674,26 @@ struct SettingsView: View {
 
     private func toolBinding(_ tool: String) -> Binding<Bool> {
         Binding(
-            get: { selectedTools.contains(tool) },
+            get: { editor.selectedTools.contains(tool) },
             set: { enabled in
-                if enabled { selectedTools.insert(tool) }
-                else { selectedTools.remove(tool) }
+                if enabled { editor.selectedTools.insert(tool) }
+                else { editor.selectedTools.remove(tool) }
             }
         )
     }
 
     private func prepareScopeAndLoad() {
-        selectedScope = appState.workspaceScope == .workspace ? .project : .global
+        isRefreshingModels = false
+        editor.configure(globalURL: globalURL, projectURL: appState.workspaceScope == .workspace ? projectURL : nil)
         load()
     }
 
     private func refreshModelCatalog() {
         guard !isRefreshingModels else { return }
         isRefreshingModels = true
-        status = "Refreshing model catalog…"
-        statusIsError = false
+        let contextID = editor.contextID
+        editor.status = "Refreshing model catalog…"
+        editor.statusIsError = false
         PiProviderAuthBridge.refreshModelCatalog(
             agentDirectory: agentDirectory,
             workingDirectory: URL(
@@ -761,244 +702,39 @@ struct SettingsView: View {
             )
         ) { result in
             Task { @MainActor in
+                guard editor.contextID == contextID else { return }
                 isRefreshingModels = false
                 switch result {
                 case .success:
-                    status = "Model catalog refreshed · Pi runtime reloading"
+                    editor.status = "Model catalog refreshed · Pi runtime reloading"
                     appState.applySettingsChange()
                 case .failure(let error):
-                    status = error.localizedDescription
-                    statusIsError = true
+                    editor.status = error.localizedDescription
+                    editor.statusIsError = true
                 }
             }
         }
     }
 
     private func load() {
-        do {
-            switch selectedScope {
-            case .global:
-                globalDocument = try PiSettingsFile.read(globalURL)
-                baseDocument = globalDocument
-            case .project:
-                projectDocument = try PiSettingsFile.read(projectURL)
-                globalDocument = (try? PiSettingsFile.read(globalURL)) ?? [:]
-                baseDocument = projectDocument
-            case .effective:
-                globalDocument = try PiSettingsFile.read(globalURL)
-                projectDocument = appState.workspaceScope == .workspace ? try PiSettingsFile.read(projectURL) : [:]
-                baseDocument = PiSettingsFile.merge(globalDocument, projectDocument)
-            }
-            populateFields(from: baseDocument)
-            status = selectedScope == .effective ? "Merged preview — no file is changed" : "Loaded"
-            hasSourceError = false
-            statusIsError = false
-        } catch {
-            baseDocument = [:]
-            populateFields(from: [:])
-            status = error.localizedDescription
-            hasSourceError = true
-            statusIsError = true
-        }
-    }
-
-    private func populateFields(from document: [String: Any]) {
-        provider = document["defaultProvider"] as? String ?? ""
-        model = document["defaultModel"] as? String ?? ""
-        thinkingLevel = document["defaultThinkingLevel"] as? String ?? ""
-        enabledModels = stringList(document["enabledModels"])
-        modelThinkingLevels = stringDictionary(document["modelThinkingLevels"])
-        thinkingBudgetMinimal = numberString(PiSettingsFile.value(in: document, path: ["thinkingBudgets", "minimal"]))
-        thinkingBudgetLow = numberString(PiSettingsFile.value(in: document, path: ["thinkingBudgets", "low"]))
-        thinkingBudgetMedium = numberString(PiSettingsFile.value(in: document, path: ["thinkingBudgets", "medium"]))
-        thinkingBudgetHigh = numberString(PiSettingsFile.value(in: document, path: ["thinkingBudgets", "high"]))
-        theme = document["theme"] as? String ?? ""
-        compaction = optionalMode(PiSettingsFile.value(in: document, path: ["compaction", "enabled"]))
-        compactionReserveTokens = numberString(PiSettingsFile.value(in: document, path: ["compaction", "reserveTokens"]))
-        compactionKeepRecentTokens = numberString(PiSettingsFile.value(in: document, path: ["compaction", "keepRecentTokens"]))
-        retry = optionalMode(PiSettingsFile.value(in: document, path: ["retry", "enabled"]))
-        retryCount = numberString(PiSettingsFile.value(in: document, path: ["retry", "maxRetries"]))
-        retryBaseDelayMs = numberString(PiSettingsFile.value(in: document, path: ["retry", "baseDelayMs"]))
-        providerMaxRetryDelayMs = numberString(PiSettingsFile.value(in: document, path: ["retry", "provider", "maxRetryDelayMs"]))
-        steeringMode = document["steeringMode"] as? String ?? ""
-        followUpMode = document["followUpMode"] as? String ?? ""
-        transport = document["transport"] as? String ?? ""
-        imageAutoResize = optionalMode(PiSettingsFile.value(in: document, path: ["images", "autoResize"]))
-        imageBlocking = optionalMode(PiSettingsFile.value(in: document, path: ["images", "blockImages"]))
-        skillCommands = optionalMode(document["enableSkillCommands"])
-        let proxyDocument = selectedScope == .global ? document : globalDocument
-        httpProxy = proxyDocument["httpProxy"] as? String ?? ""
-        httpIdleTimeoutMs = numberString(document["httpIdleTimeoutMs"])
-        websocketConnectTimeoutMs = numberString(document["websocketConnectTimeoutMs"])
-        providerTimeoutMs = numberString(PiSettingsFile.value(in: document, path: ["retry", "provider", "timeoutMs"]))
-        providerMaxRetries = numberString(PiSettingsFile.value(in: document, path: ["retry", "provider", "maxRetries"]))
-        sessionDirectory = document["sessionDir"] as? String ?? ""
-        shellPath = document["shellPath"] as? String ?? ""
-        shellCommandPrefix = document["shellCommandPrefix"] as? String ?? ""
-        npmCommand = stringList(document["npmCommand"])
-        branchSummaryReserveTokens = numberString(PiSettingsFile.value(in: document, path: ["branchSummary", "reserveTokens"]))
-        branchSummarySkipPrompt = optionalMode(PiSettingsFile.value(in: document, path: ["branchSummary", "skipPrompt"]))
-        anthropicExtraUsageWarning = optionalMode(PiSettingsFile.value(in: document, path: ["warnings", "anthropicExtraUsage"]))
-        figurePythonPath = figureSettingValue("pythonPath", in: document) as? String ?? ""
-        figureKeepWorkFiles = optionalMode(figureSettingValue("keepWorkFiles", in: document))
-        if let tools = document["defaultTools"] as? [String] {
-            overridesTools = true
-            selectedTools = Set(tools)
-        } else {
-            overridesTools = false
-            selectedTools = []
-        }
+        editor.load()
         ensureThinkingModelSelection()
     }
 
-    private func figureSettingValue(_ key: String, in document: [String: Any]) -> Any? {
-        guard selectedScope == .effective else {
-            return PiSettingsFile.figureValue(in: document, key: key)
-        }
-        return PiSettingsFile.effectiveFigureValue(
-            global: globalDocument,
-            project: projectDocument,
-            key: key
-        )
-    }
-
     private func save() {
-        guard let selectedURL else { return }
-        let integerFields = [
-            ("Reserved response tokens", compactionReserveTokens),
-            ("Recent tokens to keep", compactionKeepRecentTokens),
-            ("Maximum retries", retryCount),
-            ("Retry base delay", retryBaseDelayMs),
-            ("Maximum retry delay", providerMaxRetryDelayMs),
-            ("Minimal thinking budget", thinkingBudgetMinimal),
-            ("Low thinking budget", thinkingBudgetLow),
-            ("Medium thinking budget", thinkingBudgetMedium),
-            ("High thinking budget", thinkingBudgetHigh),
-            ("HTTP idle timeout", httpIdleTimeoutMs),
-            ("WebSocket connect timeout", websocketConnectTimeoutMs),
-            ("Provider timeout", providerTimeoutMs),
-            ("Provider maximum retries", providerMaxRetries),
-            ("Branch summary reserve tokens", branchSummaryReserveTokens)
-        ]
-        for (name, value) in integerFields {
-            guard PiSettingsFile.isOptionalNonnegativeInteger(value) else {
-                status = "\(name) must be a non-negative integer"
-                statusIsError = true
-                return
-            }
-        }
-
-        let currentDocument: [String: Any]
-        do {
-            currentDocument = try PiSettingsFile.read(selectedURL)
-        } catch {
-            status = "Reload required before saving · \(error.localizedDescription)"
-            hasSourceError = true
-            statusIsError = true
-            return
-        }
-
-        var document = currentDocument
-        PiSettingsFile.setString(provider, key: "defaultProvider", in: &document)
-        PiSettingsFile.setString(model, key: "defaultModel", in: &document)
-        PiSettingsFile.setString(thinkingLevel, key: "defaultThinkingLevel", in: &document)
-        PiSettingsFile.setStringList(enabledModels, key: "enabledModels", in: &document)
-        PiSettingsFile.setStringDictionary(modelThinkingLevels, key: "modelThinkingLevels", in: &document)
-        PiSettingsFile.setOptionalInt(thinkingBudgetMinimal, path: ["thinkingBudgets", "minimal"], in: &document)
-        PiSettingsFile.setOptionalInt(thinkingBudgetLow, path: ["thinkingBudgets", "low"], in: &document)
-        PiSettingsFile.setOptionalInt(thinkingBudgetMedium, path: ["thinkingBudgets", "medium"], in: &document)
-        PiSettingsFile.setOptionalInt(thinkingBudgetHigh, path: ["thinkingBudgets", "high"], in: &document)
-        PiSettingsFile.setString(theme, key: "theme", in: &document)
-        PiSettingsFile.setOptionalBool(compaction, path: ["compaction", "enabled"], in: &document)
-        PiSettingsFile.setOptionalInt(compactionReserveTokens, path: ["compaction", "reserveTokens"], in: &document)
-        PiSettingsFile.setOptionalInt(compactionKeepRecentTokens, path: ["compaction", "keepRecentTokens"], in: &document)
-        PiSettingsFile.setOptionalBool(retry, path: ["retry", "enabled"], in: &document)
-        PiSettingsFile.setOptionalInt(retryCount, path: ["retry", "maxRetries"], in: &document)
-        PiSettingsFile.setOptionalInt(retryBaseDelayMs, path: ["retry", "baseDelayMs"], in: &document)
-        PiSettingsFile.setOptionalInt(providerMaxRetryDelayMs, path: ["retry", "provider", "maxRetryDelayMs"], in: &document)
-        PiSettingsFile.setString(steeringMode, key: "steeringMode", in: &document)
-        PiSettingsFile.setString(followUpMode, key: "followUpMode", in: &document)
-        PiSettingsFile.setString(transport, key: "transport", in: &document)
-        PiSettingsFile.setOptionalBool(imageAutoResize, path: ["images", "autoResize"], in: &document)
-        PiSettingsFile.setOptionalBool(imageBlocking, path: ["images", "blockImages"], in: &document)
-        PiSettingsFile.setOptionalBool(skillCommands, path: ["enableSkillCommands"], in: &document)
-        if selectedScope == .global {
-            PiSettingsFile.setString(httpProxy, key: "httpProxy", in: &document)
-        }
-        PiSettingsFile.setOptionalInt(httpIdleTimeoutMs, path: ["httpIdleTimeoutMs"], in: &document)
-        PiSettingsFile.setOptionalInt(websocketConnectTimeoutMs, path: ["websocketConnectTimeoutMs"], in: &document)
-        PiSettingsFile.setOptionalInt(providerTimeoutMs, path: ["retry", "provider", "timeoutMs"], in: &document)
-        PiSettingsFile.setOptionalInt(providerMaxRetries, path: ["retry", "provider", "maxRetries"], in: &document)
-        PiSettingsFile.setString(sessionDirectory, key: "sessionDir", in: &document)
-        PiSettingsFile.setString(shellPath, key: "shellPath", in: &document)
-        PiSettingsFile.setString(shellCommandPrefix, key: "shellCommandPrefix", in: &document)
-        PiSettingsFile.setStringList(npmCommand, key: "npmCommand", in: &document)
-        PiSettingsFile.setOptionalInt(branchSummaryReserveTokens, path: ["branchSummary", "reserveTokens"], in: &document)
-        PiSettingsFile.setOptionalBool(branchSummarySkipPrompt, path: ["branchSummary", "skipPrompt"], in: &document)
-        PiSettingsFile.setOptionalBool(anthropicExtraUsageWarning, path: ["warnings", "anthropicExtraUsage"], in: &document)
-        let normalizedFigurePythonPath = figurePythonPath
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        PiSettingsFile.setValue(
-            normalizedFigurePythonPath.isEmpty ? nil : normalizedFigurePythonPath,
-            path: ["figure", "pythonPath"],
-            in: &document
-        )
-        PiSettingsFile.setOptionalBool(
-            figureKeepWorkFiles,
-            path: ["figure", "keepWorkFiles"],
-            in: &document
-        )
-        PiSettingsFile.setValue(nil, path: ["scientificFigure", "pythonPath"], in: &document)
-        PiSettingsFile.setValue(nil, path: ["scientificFigure", "keepWorkFiles"], in: &document)
-        if overridesTools { document["defaultTools"] = builtInTools.filter(selectedTools.contains) }
-        else { document.removeValue(forKey: "defaultTools") }
-        do {
-            try PiSettingsFile.write(document, to: selectedURL)
-            baseDocument = document
-            if selectedScope == .global { globalDocument = document }
-            if selectedScope == .project { projectDocument = document }
-            status = "Saved · Pi runtime reloading"
-            hasSourceError = false
-            statusIsError = false
-            appState.applySettingsChange()
-        } catch {
-            status = error.localizedDescription
-            statusIsError = true
-        }
-    }
-
-    private func optionalMode(_ value: Any?) -> PiOptionalSetting {
-        guard let value = value as? Bool else { return .inherited }
-        return value ? .enabled : .disabled
-    }
-
-    private func stringList(_ value: Any?) -> String {
-        (value as? [String] ?? []).joined(separator: "\n")
-    }
-
-    private func stringDictionary(_ value: Any?) -> [String: String] {
-        guard let object = value as? [String: Any] else { return [:] }
-        return object.reduce(into: [:]) { result, entry in
-            if let string = entry.value as? String {
-                result[entry.key] = string
-            }
-        }
-    }
-
-    private func numberString(_ value: Any?) -> String {
-        (value as? NSNumber)?.stringValue ?? ""
+        if editor.save() { appState.applySettingsChange() }
     }
 
     private func ensureThinkingModelSelection() {
         guard !thinkingModelChoices.contains(selectedThinkingModel) else { return }
-        let resolvedProvider = provider.isEmpty ? inheritedProvider : provider
-        let resolvedModel = model.isEmpty ? inheritedModel : model
+        let resolvedProvider = editor.provider.isEmpty ? inheritedProvider : editor.provider
+        let resolvedModel = editor.model.isEmpty ? inheritedModel : editor.model
         let defaultIdentity = resolvedProvider.isEmpty || resolvedModel.isEmpty
             ? nil
             : "\(resolvedProvider)/\(resolvedModel)"
         selectedThinkingModel = defaultIdentity.flatMap {
             thinkingModelChoices.contains($0) ? $0 : nil
-        } ?? modelThinkingLevels.keys.sorted().first ?? thinkingModelChoices.first ?? ""
+        } ?? editor.modelThinkingLevels.keys.sorted().first ?? thinkingModelChoices.first ?? ""
     }
 
     private func choiceLabel(_ value: String) -> String {
@@ -1118,114 +854,5 @@ private struct SettingsPickerRow<Content: View>: View {
             content
             Spacer()
         }
-    }
-}
-
-enum PiSettingsFile {
-    static func isOptionalNonnegativeInteger(_ raw: String) -> Bool {
-        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return true }
-        guard let integer = Int(value) else { return false }
-        return integer >= 0
-    }
-
-    static func read(_ url: URL) throws -> [String: Any] {
-        guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
-        let data = try Data(contentsOf: url)
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw NSError(domain: "PersonalPi.Settings", code: 1, userInfo: [NSLocalizedDescriptionKey: "Settings root must be a JSON object: \(PiFormat.path(url.path))"])
-        }
-        return object
-    }
-
-    static func write(_ object: [String: Any], to url: URL) throws {
-        guard JSONSerialization.isValidJSONObject(object) else {
-            throw NSError(domain: "PersonalPi.Settings", code: 2, userInfo: [NSLocalizedDescriptionKey: "Settings contain a value that cannot be encoded as JSON"])
-        }
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
-        data.append(0x0A)
-        try data.write(to: url, options: .atomic)
-    }
-
-    static func merge(_ base: [String: Any], _ override: [String: Any]) -> [String: Any] {
-        var result = base
-        for (key, value) in override {
-            if let baseObject = result[key] as? [String: Any], let overrideObject = value as? [String: Any] {
-                result[key] = merge(baseObject, overrideObject)
-            } else {
-                result[key] = value
-            }
-        }
-        return result
-    }
-
-    static func value(in object: [String: Any], path: [String]) -> Any? {
-        guard let first = path.first else { return nil }
-        if path.count == 1 { return object[first] }
-        guard let nested = object[first] as? [String: Any] else { return nil }
-        return value(in: nested, path: Array(path.dropFirst()))
-    }
-
-    static func figureValue(in object: [String: Any], key: String) -> Any? {
-        value(in: object, path: ["figure", key])
-            ?? value(in: object, path: ["scientificFigure", key])
-    }
-
-    static func effectiveFigureValue(
-        global: [String: Any],
-        project: [String: Any],
-        key: String
-    ) -> Any? {
-        figureValue(in: project, key: key) ?? figureValue(in: global, key: key)
-    }
-
-    static func setString(_ raw: String, key: String, in object: inout [String: Any]) {
-        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.isEmpty { object.removeValue(forKey: key) }
-        else { object[key] = value }
-    }
-
-    static func setStringList(_ raw: String, key: String, in object: inout [String: Any]) {
-        let values = raw.split { $0.isNewline }
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        if values.isEmpty { object.removeValue(forKey: key) }
-        else { object[key] = values }
-    }
-
-    static func setStringDictionary(
-        _ values: [String: String],
-        key: String,
-        in object: inout [String: Any]
-    ) {
-        if values.isEmpty { object.removeValue(forKey: key) }
-        else { object[key] = values }
-    }
-
-    static func setOptionalBool(_ mode: PiOptionalSetting, path: [String], in object: inout [String: Any]) {
-        switch mode {
-        case .inherited: setValue(nil, path: path, in: &object)
-        case .enabled: setValue(true, path: path, in: &object)
-        case .disabled: setValue(false, path: path, in: &object)
-        }
-    }
-
-    static func setOptionalInt(_ raw: String, path: [String], in object: inout [String: Any]) {
-        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        setValue(value.isEmpty ? nil : Int(value), path: path, in: &object)
-    }
-
-    static func setValue(_ value: Any?, path: [String], in object: inout [String: Any]) {
-        guard let first = path.first else { return }
-        if path.count == 1 {
-            if let value { object[first] = value }
-            else { object.removeValue(forKey: first) }
-            return
-        }
-        var nested = object[first] as? [String: Any] ?? [:]
-        setValue(value, path: Array(path.dropFirst()), in: &nested)
-        if nested.isEmpty { object.removeValue(forKey: first) }
-        else { object[first] = nested }
     }
 }

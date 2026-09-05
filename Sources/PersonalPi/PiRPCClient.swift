@@ -154,6 +154,7 @@ final class PiRPCClient: NSObject {
     private var inputPipe: Pipe?
     private var outputPipe: Pipe?
     private var errorPipe: Pipe?
+    private var writer: PiPipeWriter?
     private var outputBuffer = Data()
     private var onStart: ((Bool, String) -> Void)?
     private struct PendingResponse {
@@ -234,6 +235,7 @@ final class PiRPCClient: NSObject {
 
         self.process = process
         self.inputPipe = input
+        self.writer = PiPipeWriter(handle: input.fileHandleForWriting)
         self.outputPipe = output
         self.errorPipe = error
         generation = UUID()
@@ -245,7 +247,7 @@ final class PiRPCClient: NSObject {
         output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 guard let self, self.generation == connection else { return }
                 self.consume(data)
             }
@@ -254,14 +256,14 @@ final class PiRPCClient: NSObject {
         error.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 guard let self, self.generation == connection else { return }
                 self.launchStderr = String((self.launchStderr + text).suffix(16_384))
             }
         }
 
         process.terminationHandler = { [weak self] process in
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 guard let self, self.generation == connection else { return }
                 let snippet = self.launchStderr.trimmingCharacters(in: .whitespacesAndNewlines)
                 let message = snippet.isEmpty ? "Pi exited with status \(process.terminationStatus)" : snippet
@@ -612,7 +614,8 @@ final class PiRPCClient: NSObject {
         outputPipe?.fileHandleForReading.readabilityHandler = nil
         errorPipe?.fileHandleForReading.readabilityHandler = nil
         oldProcess?.terminationHandler = nil
-        try? inputPipe?.fileHandleForWriting.close()
+        writer?.close()
+        writer = nil
         process = nil
         inputPipe = nil
         outputPipe = nil
@@ -658,12 +661,14 @@ final class PiRPCClient: NSObject {
     }
 
     private func send(command: [String: Any]) {
-        guard let inputPipe, let data = try? JSONSerialization.data(withJSONObject: command) else { return }
-        do {
-            try inputPipe.fileHandleForWriting.write(contentsOf: data + Data([0x0A]))
-        } catch {
-            disconnect(reason: error.localizedDescription)
-            onTermination?(error.localizedDescription)
+        guard let writer, let data = try? JSONSerialization.data(withJSONObject: command) else { return }
+        let connection = generation
+        writer.write(data + Data([0x0A])) { [weak self] message in
+            DispatchQueue.main.async {
+                guard let self, self.generation == connection else { return }
+                self.disconnect(reason: message)
+                self.onTermination?(message)
+            }
         }
     }
 
@@ -906,7 +911,7 @@ enum PiLaunchConfiguration {
     }
 
     static func processEnvironment() -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
+        var environment = PiRuntimeContext.current.processEnvironment(ProcessInfo.processInfo.environment)
         environment["PATH"] = augmentedPathDirectories().joined(separator: ":")
         return environment
     }
@@ -970,7 +975,7 @@ enum PiLaunchConfiguration {
     }
 
     static func modelLabel(for workingDirectory: String) -> String? {
-        let global = readSettings(at: PersonalPiRuntimeEnvironment.piRootURL.appendingPathComponent("agent/settings.json"))
+        let global = readSettings(at: PiRuntimeContext.current.settingsURL)
         let project = readSettings(at: URL(fileURLWithPath: workingDirectory).appendingPathComponent(".pi/settings.json"))
         let provider = project["defaultProvider"] as? String ?? global["defaultProvider"] as? String
         let model = project["defaultModel"] as? String ?? global["defaultModel"] as? String
