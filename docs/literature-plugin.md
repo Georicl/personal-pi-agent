@@ -3,6 +3,8 @@
 Literature is a bundled Pi Extension, not a skill-only feature. It uses the
 Knowledge package's locked Python environment and capture/index APIs. No second
 knowledge database or new model credential is introduced.
+Runtime bytecode caching is disabled so importing shared Python modules cannot
+modify resources inside a signed app bundle.
 
 ## Workflow
 

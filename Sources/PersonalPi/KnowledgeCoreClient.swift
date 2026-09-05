@@ -452,6 +452,7 @@ enum KnowledgeCoreClient {
         var environment = PiLaunchConfiguration.processEnvironment()
         extraEnvironment.forEach { environment[$0.key] = $0.value }
         environment["PYTHONUNBUFFERED"] = "1"
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
         let captured = try PiProcessRunner.run(executable: executable, arguments: arguments,
             workingDirectory: workingDirectory, environment: environment, input: input)
         guard captured.status == 0 else {

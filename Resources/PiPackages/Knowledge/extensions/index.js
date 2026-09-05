@@ -168,7 +168,7 @@ export async function runCore(ctx, request, signal, onUpdate, runtimeRunner = ru
     {
       cwd: ctx.cwd,
       signal,
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" },
     },
   );
   const payload = parseRunnerOutput(result);
