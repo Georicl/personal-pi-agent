@@ -270,8 +270,9 @@ final class KnowledgeLibraryStore: ObservableObject {
             guard let self else { return }
             self.isWorking = false
             switch result {
-            case .success:
-                self.status = "Knowledge card published"
+            case .success(let response):
+                self.status = response.recoveryPath.map { "Knowledge card published · Original retained at \($0)" }
+                    ?? "Knowledge card published"
                 self.selectFile(nil)
                 self.reload()
             case .failure(let failure): self.error = failure.localizedDescription

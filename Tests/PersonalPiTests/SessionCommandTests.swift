@@ -140,9 +140,100 @@ struct WorkflowBoundaryTests {
     private func savedSession(_ root: URL, id: String, cwd: String) throws -> PiSavedSession {
         try FileManager.default.createDirectory(atPath: cwd, withIntermediateDirectories: true)
         let path = root.appendingPathComponent("\(id).jsonl")
-        let data = try JSONSerialization.data(withJSONObject: ["type": "session", "version": 3, "id": id, "cwd": cwd])
-        try data.write(to: path)
+        let data = try JSONSerialization.data(withJSONObject: ["type": "session", "version": 3, "id": id, "cwd": cwd,
+            "timestamp": ISO8601DateFormatter().string(from: Date())])
+        try (data + Data([0x0A])).write(to: path)
         return PiSavedSession(id: id, path: path.path, timestamp: Date(), cwd: cwd)
+    }
+
+    @Test("Late A stream events cannot mutate a resumed B session or its running task")
+    func streamSessionFence() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = try makeApp(root)
+        defer { app.piClient.stop() }
+        app.connectPi()
+        try await waitFor { app.sessionId != nil && app.piClient.pendingRequestCount == 0 }
+        let oldEvents = try #require(app.piClient.onEvent)
+        let oldUI = try #require(app.piClient.onUIRequest)
+        let oldPID = app.piClient.processIdentifier
+        app.composerText = "/hold"
+        app.sendPrompt()
+        try await waitFor { app.taskStore.tasks.first?.state == .running }
+        let session = try savedSession(root, id: "session-B", cwd: root.appendingPathComponent("B").path)
+        app.switchSession(session)
+        try await waitFor { app.sessionId == session.id && app.piClient.pendingRequestCount == 0 }
+        #expect(app.piClient.processIdentifier != oldPID)
+        app.composerText = "/hold"
+        app.sendPrompt()
+        try await waitFor { app.taskStore.tasks.first?.sessionKey == session.id && app.taskStore.tasks.first?.state == .running }
+        let texts = app.messages.map(\.text)
+        let activities = app.activities.map(\.id)
+        let tasks = app.taskStore.tasks
+        // Queued callbacks captured from A are released only AFTER B is ready.
+        // These events have no native session ID, including the settled event.
+        for type in ["message_update", "tool_execution_start", "tool_execution_end", "agent_settled"] {
+            oldEvents(PiStreamEvent(type: type, role: "assistant", delta: "STALE-A", messageText: nil,
+                toolName: "old-tool", toolCallId: "old-call", toolDetail: "A result", toolIsError: false,
+                usage: nil, figureArtifact: nil))
+        }
+        oldUI(PiUIRequest(id: "old-ui", method: "confirm", title: "Stale A question", message: "",
+                         options: [], placeholder: "", prefill: ""))
+        #expect(app.messages.map(\.text) == texts)
+        #expect(app.activities.map(\.id) == activities)
+        #expect(app.taskStore.tasks == tasks)
+        #expect(app.isGenerating)
+        #expect(app.uiRequest == nil)
+        #expect(app.sessionId == session.id)
+    }
+
+    @Test("A vetoed switch retains events that completed the original session during the transition")
+    func cancelledSwitchKeepsOriginalEvents() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = try makeApp(root)
+        defer { app.piClient.stop() }
+        app.connectPi()
+        try await waitFor { app.sessionId != nil && app.piClient.pendingRequestCount == 0 }
+        app.composerText = "/hold"
+        app.sendPrompt()
+        try await waitFor { app.taskStore.tasks.first?.state == .running }
+        let handler = try #require(app.piClient.onEvent)
+        let originalSession = app.sessionId
+        let originalPID = app.piClient.processIdentifier
+        let veto = try savedSession(root, id: "veto", cwd: root.appendingPathComponent("B").path)
+        app.switchSession(veto)
+        for type in ["message_update", "agent_settled"] {
+            handler(PiStreamEvent(type: type, role: "assistant", delta: "Completed in A", messageText: nil,
+                toolName: nil, toolCallId: nil, toolDetail: nil, toolIsError: nil, usage: nil, figureArtifact: nil))
+        }
+        try await waitFor { !app.isSessionTransitioning }
+        #expect(app.sessionId == originalSession)
+        #expect(app.piClient.processIdentifier == originalPID)
+        #expect(app.messages.last?.text == "Completed in A")
+        #expect(app.taskStore.tasks.first?.state == .finished)
+        #expect(!app.isGenerating)
+    }
+
+    @Test("A delayed dialog after command completion is reconciled after the user's reply", arguments: [true, false])
+    func delayedCommandUI(confirmed: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = try makeApp(root)
+        defer { app.piClient.stop() }
+        app.connectPi()
+        try await waitFor { app.sessionId != nil && app.piClient.pendingRequestCount == 0 }
+        app.composerText = "/late-ask"
+        app.sendPrompt()
+        try await waitFor { !app.isGenerating && app.agentStatus == "Command completed" }
+        try Data().write(to: root.appendingPathComponent("release-late-ui"))
+        try await waitFor { app.uiRequest != nil }
+        #expect(app.isGenerating)
+        app.respondToUIRequest(confirmed: confirmed)
+        try await waitFor { !app.isGenerating && app.piClient.pendingRequestCount == 0 }
+        #expect(app.uiRequest == nil)
+        #expect(app.taskStore.tasks.isEmpty)
+        #expect(app.agentStatus == (confirmed ? "Command completed" : "Cancelled"))
     }
 
     @Test("Installed Pi RPC preserves project scope, native vetoes and nonblocking command completion",
@@ -173,6 +264,7 @@ struct WorkflowBoundaryTests {
         try FileManager.default.removeItem(at: runtime.piRoot.appendingPathComponent("veto-next"))
         app.switchSession(saved)
         try await waitFor { app.sessionId == "native-B" }
+        try #require(app.sessionId == "native-B", "Resume: \(app.agentStatus); \(app.connectionState); running=\(app.isPiRunning); pid=\(String(describing: client.processIdentifier))")
         app.composerText = "/__workflow_context"
         app.sendPrompt()
         try await waitFor { !app.isGenerating }

@@ -134,6 +134,7 @@ struct KnowledgeSearchScopeState: Codable, Sendable, Hashable {
 struct KnowledgeDocumentResponse: Decodable, Sendable {
     let document: KnowledgeSearchDocument
     let chunks: [KnowledgeSearchChunk]
+    var recoveryPath: String? = nil
 }
 
 struct KnowledgeImportResponse: Decodable, Sendable {

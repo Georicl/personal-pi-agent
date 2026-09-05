@@ -12,6 +12,10 @@ import time
 root = Path(sys.argv[1])
 cwd = os.path.realpath(os.getcwd())
 session_id = "initial-" + Path(cwd).name
+if "--session" in sys.argv:
+    header = json.loads(Path(sys.argv[sys.argv.index("--session") + 1]).read_text().splitlines()[0])
+    session_id = header["id"]
+    cwd = os.path.realpath(header["cwd"])
 streaming = False
 pending_count = 0
 pending_dialog = None
@@ -90,6 +94,14 @@ for line in sys.stdin:
             pending_dialog = request
             emit({"type": "extension_ui_request", "id": "question", "method": "confirm", "title": "Continue?"})
             continue
+        elif text == "/late-ask":
+            # Deterministic gate: the test first observes prompt+idle completion,
+            # then creates this file to release the delayed UI request.
+            def delayed_ui():
+                while not (root / "release-late-ui").exists():
+                    time.sleep(0.01)
+                emit({"type": "extension_ui_request", "id": "late-question", "method": "confirm", "title": "Late question"})
+            threading.Thread(target=delayed_ui, daemon=True).start()
         elif text == "/queue-model":
             pending_count = 1
             later(0.3, start_model)

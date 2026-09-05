@@ -8,8 +8,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 import knowledge_core as core
 
@@ -607,6 +610,93 @@ Stable identity survives a file move.
         self.assertEqual(result["indexed"], 1)
         document = core.get_document(self.global_scope, "stable-card")["document"]
         self.assertEqual(document["relativePath"], "cards/renamed.md")
+
+    def test_publish_preserves_a_save_after_final_validation(self) -> None:
+        captured = core.capture_record(self.project_scope, {
+            "category": "drafts", "title": "Concurrent save", "content": "Confirmed body", "sources": []
+        })
+        source = Path(captured["path"])
+        original = source.read_bytes()
+        changed = original.replace(b"Confirmed body", b"Unconfirmed editor save")
+        reached, proceed = threading.Event(), threading.Event()
+        publish_snapshot = core.publish_snapshot
+
+        def barrier(snapshot, destination):
+            reached.set()  # All validation is complete; publication has not happened.
+            if not proceed.wait(10):
+                raise AssertionError("publication barrier was not released")
+            publish_snapshot(snapshot, destination)
+
+        with patch.object(core, "publish_snapshot", side_effect=barrier), ThreadPoolExecutor(max_workers=1) as pool:
+            result = pool.submit(core.publish_card, self.project_scope, {
+                "documentId": captured["document"]["id"], "userConfirmed": True,
+                "expectedContentHash": captured["document"]["contentHash"],
+            })
+            try:
+                self.assertTrue(reached.wait(10))
+                source.write_bytes(changed)  # An editor recreates the original pathname.
+            finally:
+                proceed.set()
+            with self.assertRaisesRegex(core.KnowledgeCoreError, "new draft preserved"):
+                result.result(timeout=10)
+        self.assertEqual(source.read_bytes(), changed)
+        published = self.project_scope.knowledge_root / "cards" / source.name
+        self.assertIn("Confirmed body", published.read_text())
+        self.assertNotIn("Unconfirmed editor save", published.read_text())
+
+    def test_publish_retains_in_place_edits_through_the_original_file_descriptor(self) -> None:
+        captured = core.capture_record(self.project_scope, {
+            "category": "drafts", "title": "Open editor", "content": "Confirmed body", "sources": []
+        })
+        source = Path(captured["path"])
+        changed = source.read_bytes().replace(b"Confirmed body", b"Unconfirmed open-file edit")
+        reached, proceed = threading.Event(), threading.Event()
+        publish_snapshot = core.publish_snapshot
+
+        def barrier(snapshot, destination):
+            reached.set()
+            if not proceed.wait(10):
+                raise AssertionError("publication barrier was not released")
+            publish_snapshot(snapshot, destination)
+
+        with source.open("r+b") as editor, patch.object(core, "publish_snapshot", side_effect=barrier), ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(core.publish_card, self.project_scope, {
+                "documentId": captured["document"]["id"], "userConfirmed": True,
+                "expectedContentHash": captured["document"]["contentHash"],
+            })
+            try:
+                self.assertTrue(reached.wait(10))
+                editor.write(changed)
+                editor.truncate()
+                editor.flush()
+            finally:
+                proceed.set()
+            result = future.result(timeout=10)
+        self.assertEqual(Path(result["recoveryPath"]).read_bytes(), changed)
+        self.assertIn("Confirmed body", Path(result["path"]).read_text())
+        self.assertNotIn("Unconfirmed open-file edit", Path(result["path"]).read_text())
+
+    def test_publish_restores_a_new_version_claimed_during_a_racing_save(self) -> None:
+        captured = core.capture_record(self.project_scope, {
+            "category": "drafts", "title": "Claim race", "content": "Confirmed body", "sources": []
+        })
+        source = Path(captured["path"])
+        changed = source.read_bytes().replace(b"Confirmed body", b"New save before rename")
+        rename = Path.rename
+
+        def replace_before_claim(path, destination):
+            if path == source:
+                source.write_bytes(changed)
+            return rename(path, destination)
+
+        with patch.object(Path, "rename", replace_before_claim):
+            with self.assertRaisesRegex(core.KnowledgeCoreError, "draft changed before publication"):
+                core.publish_card(self.project_scope, {
+                    "documentId": captured["document"]["id"], "userConfirmed": True,
+                    "expectedContentHash": captured["document"]["contentHash"],
+                })
+        self.assertEqual(source.read_bytes(), changed)
+        self.assertFalse((self.project_scope.knowledge_root / "cards" / source.name).exists())
 
     def test_capture_and_confirmed_publish_preserve_card_identity(self) -> None:
         captured = core.capture_record(

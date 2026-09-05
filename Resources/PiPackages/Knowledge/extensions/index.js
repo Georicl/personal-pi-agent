@@ -539,7 +539,7 @@ export default function knowledgeExtension(pi) {
           onUpdate,
         );
         return {
-          content: [{ type: "text", text: `Published ${payload.relativePath}` }],
+          content: [{ type: "text", text: `Published ${payload.relativePath}. Original retained for recovery at ${payload.recoveryPath}` }],
           details: { personalPiKnowledgePublish: payload },
         };
       } catch (error) {

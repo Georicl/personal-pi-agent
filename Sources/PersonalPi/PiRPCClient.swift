@@ -214,7 +214,8 @@ final class PiRPCClient: NSObject {
         PiLaunchConfiguration.modelLabel(for: workingDirectory)
     }
 
-    func start(workingDirectory: String, projectTrusted: Bool = true, completion: @escaping (Bool, String) -> Void) {
+    func start(workingDirectory: String, projectTrusted: Bool = true, sessionPath: String? = nil,
+               completion: @escaping (Bool, String) -> Void) {
         guard process == nil else {
             completion(onStart == nil, onStart == nil ? "already running" : "Pi is connecting")
             return
@@ -245,6 +246,7 @@ final class PiRPCClient: NSObject {
 
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = argumentsOverride ?? PiLaunchConfiguration.arguments(projectTrusted: projectTrusted)
+        if let sessionPath { process.arguments?.append(contentsOf: ["--session", sessionPath]) }
         process.currentDirectoryURL = URL(fileURLWithPath: cwd)
         process.environment = environmentOverride ?? PiLaunchConfiguration.processEnvironment()
         process.standardInput = input

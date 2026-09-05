@@ -1161,6 +1161,11 @@ def capture_record(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, 
     }
 
 
+def publish_snapshot(snapshot: Path, destination: Path) -> None:
+    """Atomically expose a fully written file without replacing any destination."""
+    os.link(snapshot, destination)
+
+
 def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, Any]:
     if request.get("userConfirmed") is not True:
         raise KnowledgeCoreError("publishing requires explicit user confirmation")
@@ -1204,25 +1209,60 @@ def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, An
 
     destination = scope.knowledge_root / "cards" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with destination.open("x", encoding="utf-8") as stream:
-            stream.write(markdown_record(metadata, content))
-    except FileExistsError as error:
-        raise KnowledgeCoreError(f"published card already exists: {destination.name}") from error
-    try:
-        if source.read_bytes() != source_bytes:
-            raise KnowledgeCoreError("draft changed during publication; preview and confirm again")
-        source.unlink()
-    except Exception:
-        destination.unlink(missing_ok=True)
-        raise
+    if os.path.lexists(destination):
+        raise KnowledgeCoreError(f"published card already exists: {destination.name}")
 
-    indexed = index_scope(scope)
-    document = get_document(scope, document_id)
+    # A final read followed by unlink(source) cannot protect an editor's save.
+    # Claim the current inode atomically and never unlink it: both in-place
+    # writes through an already-open descriptor and atomic saves to the original
+    # pathname remain recoverable. Recovery files are hidden from the index.
+    recovery_root = knowledge_root / ".publish-recovery"
+    if recovery_root.is_symlink():
+        raise KnowledgeCoreError("publication recovery directory must not be a symlink")
+    recovery_root.mkdir(mode=0o700, exist_ok=True)
+    recovery_dir = recovery_root / uuid.uuid4().hex
+    recovery_dir.mkdir(mode=0o700)
+    recovery_source = recovery_dir / source.name
+    snapshot = recovery_dir / "reviewed.snapshot"
+    source.rename(recovery_source)
+    published = False
+    try:
+        if recovery_source.is_symlink() or recovery_source.read_bytes() != source_bytes:
+            raise KnowledgeCoreError("draft changed before publication; preview and confirm again")
+        if os.path.lexists(source):
+            raise KnowledgeCoreError("draft was saved again during publication; new draft preserved")
+        reviewed_text = markdown_record(metadata, content)
+        with snapshot.open("x", encoding="utf-8") as stream:
+            stream.write(reviewed_text)
+        publish_snapshot(snapshot, destination)
+        published = True
+        if os.path.lexists(source):
+            raise KnowledgeCoreError(
+                f"draft was saved again during publication; new draft preserved at {source}; "
+                f"only the confirmed version was published at {destination}"
+            )
+        indexed = index_scope(scope)
+        document = get_document(scope, document_id)
+        if (os.path.lexists(source)
+                or document["document"]["relativePath"] != destination.relative_to(knowledge_root).as_posix()
+                or document["document"]["contentHash"] != hashlib.sha256(reviewed_text.encode("utf-8")).hexdigest()):
+            raise KnowledgeCoreError("publication changed during indexing; all versions retained for review")
+    except Exception as error:
+        if not published:
+            try:
+                # Exclusive restoration: never overwrite a concurrently saved
+                # pathname. Keep the recovery link even after restoration.
+                os.link(recovery_source, source, follow_symlinks=False)
+            except FileExistsError:
+                pass
+            except OSError as restore_error:
+                raise KnowledgeCoreError(f"{error}; restore failed: {restore_error}; recovery: {recovery_source}") from error
+        raise KnowledgeCoreError(f"{error}; recovery: {recovery_source}") from error
     return {
         "scope": scope.as_dict(),
         "path": str(destination),
         "relativePath": destination.relative_to(scope.knowledge_root).as_posix(),
+        "recoveryPath": str(recovery_source),
         "index": indexed,
         **document,
     }

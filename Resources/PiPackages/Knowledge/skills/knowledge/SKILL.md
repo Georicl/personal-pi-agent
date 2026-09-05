@@ -30,6 +30,8 @@ Every draft should identify its type, confidence, tags, and sources. Use a `sour
 
 Check the draft against its sources, correct unsupported claims, and surface uncertainty. Preview it with `knowledge_get` and retain that response's `document.contentHash`. Call `knowledge_publish` only after the user explicitly confirms that exact draft version, passing its hash as `expectedContentHash`. If the file or index changed, reindex, preview, and obtain confirmation again; never silently replace the confirmed hash. Never represent a draft, inbox item, or model inference as reviewed knowledge.
 
+Publication retains an original in hidden `.publish-recovery` storage and returns `recoveryPath`. Do not delete recovery files automatically. If a concurrent-save conflict is reported, show the preserved locations and ask the user which draft to retain before further publication or reindexing; never overwrite the new draft to make a retry succeed.
+
 ## Maintenance
 
 Use incremental `knowledge_index` after file changes. Use rebuild only when the derived index is missing or inconsistent; source files remain authoritative. Use `knowledge_inventory` to report file count, total bytes, categories, unsupported attachments, and indexing errors.
