@@ -60,7 +60,7 @@ Global Chat 的工作目录为 `~/.pi/chat`。Project 模式以所选项目根�
 |---|---|---|
 | Overview | 当前作用域入口 | 新会话、发送消息、账户状态、当前会话用量、最近会话 |
 | Sessions | 会话总览与对话 | 恢复、切换、筛选、停止、压缩、会话信息、树导航、Fork、Clone、HTML 导出、复制回复、资源重载 |
-| Knowledge | 知识目录入口 | 查看 Global/Project 知识目录；Pi 已可索引、检索、读取、捕获和发布知识，详细 GUI 总览将在后续 PR 完成 |
+| Knowledge | 知识库总览 | Global/Project 切换、文件数与总大小、分类列表、文本搜索、文件详情、导入、更新/重建索引、发布已审阅草稿 |
 | Packages | Pi 包与资源管理 | Global/Project 安装、移除、更新 Packages；启用或禁用 Extensions、Skills、Prompt Templates、Themes |
 | Projects | 项目总览 | 创建或添加项目、查看 Git 分支、修改数量、会话数量并快速切换 |
 | Tasks | 任务状态 | 按 Submitted、Running、Waiting、Finished 展示；同一 Pi Session 持续更新同一任务 |
@@ -148,6 +148,12 @@ Project 资源支持 Inherit、Enabled、Disabled 三态，不建立第二套独
 Knowledge Core 提供 GUI 无关的基础能力：Global/Project 标准目录、Markdown/TXT/PDF 解析、SQLite FTS5、结构化知识卡校验、增量索引、删除检测、重建、跨作用域搜索和可定位结果。Markdown/PDF 等人类可读文件是事实来源，`~/.pi/personal/knowledge/` 下的 SQLite 仅为可重建索引。
 
 内置 Knowledge Pi Package 已注册 `/knowledge`、检索与维护工具，并提供只在明确请求时运行的捕获/发布流程；不会把整个知识库注入每轮上下文。接口、路径和卡片格式见 [Knowledge Core](docs/knowledge-core.md)，Agent 工作流见 [Knowledge Plugin](docs/knowledge-plugin.md)。
+
+左侧“知识库”入口下方还有当前 Project 与 Global 的容量摘要，点击即可进入对应知识库。页面展示文件总数、总大小、知识卡与草稿数量，以及来源、知识卡、草稿、收件箱、附件、旧版条目、其他文件的分类。容量为实际文件字节数，包含附件和未分类文件，不包含隐藏文件、符号链接或外部 SQLite 索引。
+
+使用“导入文件…”选择 Markdown、TXT 或文本型 PDF，会复制到所选知识库的 `sources/` 并建立索引；原文件保持原样，重名文件会报告冲突。“搜索”查询所选范围的已索引来源资料和已审阅卡片，显示章节或 PDF 页码。点击文件可查看文本详情、打开原文件或在 Finder 中定位；文件修改后会提示更新索引。草稿详情中的“发布已审阅知识卡”保留稳定 ID，将已确认的草稿移入 `cards/`。
+
+侧边栏统计在后台读取文件系统；打开知识库页面后，GUI 通过同一个 Knowledge Core 获取索引信息，不需要发送聊天消息或消耗模型额度。首次使用会通过 `uv` 准备锁定的 Python 依赖环境。扫描型 PDF 暂不支持 OCR；列表显示前 5,000 个文件，统计包含全部文件，文本详情最多预览 50 个片段。
 
 ~~~bash
 scripts/check-knowledge-core.sh

@@ -122,6 +122,72 @@ final class PersonalPiUITests: XCTestCase {
     }
 
     @MainActor
+    func testKnowledgeLibrarySwitchesScopesAndShowsFilesAndSize() throws {
+        let project = dataRoot.appendingPathComponent("ResearchProject")
+        try prepareKnowledgeInventory(kind: "project", root: project.appendingPathComponent(".pi/knowledge"), count: 2)
+        try prepareKnowledgeInventory(kind: "global", root: dataRoot.appendingPathComponent("knowledge"), count: 1)
+        let app = launchApp(language: "zh-Hans", projectRoot: project)
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        let projectEntry = app.buttons["sidebar-knowledge-project"]
+        XCTAssertTrue(projectEntry.waitForExistence(timeout: 4))
+        projectEntry.click()
+        XCTAssertTrue(app.staticTexts["knowledge-heading"].waitForExistence(timeout: 4))
+        let count = app.descendants(matching: .any)["knowledge-file-count"].firstMatch
+        XCTAssertTrue(count.waitForExistence(timeout: 8))
+        let projectCount = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '2'"), object: count)
+        XCTAssertEqual(XCTWaiter.wait(for: [projectCount], timeout: 8), .completed)
+        XCTAssertTrue(app.descendants(matching: .any)["knowledge-total-size"].exists)
+        XCTAssertTrue(app.buttons["knowledge-file-sources/paper-0.md"].exists)
+        XCTAssertTrue(app.buttons["index-knowledge-button"].exists)
+        XCTAssertTrue(app.buttons["import-knowledge-button"].exists)
+        app.buttons["knowledge-file-sources/paper-0.md"].click()
+        XCTAssertTrue(app.buttons["关闭"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["打开原文件"].exists)
+        app.buttons["关闭"].click()
+        app.buttons["knowledge-category-drafts"].click()
+        XCTAssertFalse(app.buttons["knowledge-file-sources/paper-0.md"].exists)
+        app.buttons["knowledge-category-all"].click()
+        app.buttons["sidebar-knowledge-global"].click()
+        let globalCount = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == '1'"), object: count)
+        XCTAssertEqual(XCTWaiter.wait(for: [globalCount], timeout: 8), .completed)
+        XCTAssertFalse(app.buttons["knowledge-file-sources/paper-1.md"].exists)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Knowledge library in Chinese"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    private func prepareKnowledgeInventory(kind: String, root: URL, count: Int) throws {
+        let sources = root.appendingPathComponent("sources")
+        let fixtures = dataRoot.appendingPathComponent("ui-fixtures")
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: fixtures, withIntermediateDirectories: true)
+        var files: [[String: Any]] = []
+        for index in 0..<count {
+            let name = "paper-\(index).md"
+            let content = "# Study \(index)\n\nSource evidence and methods.\n"
+            let data = Data(content.utf8)
+            try data.write(to: sources.appendingPathComponent(name))
+            files.append([
+                "relativePath": "sources/\(name)", "category": "sources", "name": name,
+                "extension": ".md", "sizeBytes": data.count, "modifiedAt": "2026-09-05T01:02:03.000Z",
+                "supported": true, "index": NSNull(),
+            ])
+        }
+        let bytes = files.reduce(0) { $0 + ($1["sizeBytes"] as? Int ?? 0) }
+        let snapshot: [String: Any] = [
+            "success": true,
+            "scope": ["id": kind, "kind": kind, "knowledgeRoot": root.path,
+                      "projectRoot": kind == "project" ? root.deletingLastPathComponent().deletingLastPathComponent().path as Any : NSNull(),
+                      "indexPath": dataRoot.appendingPathComponent("index.sqlite").path],
+            "initialized": false, "fileCount": count, "totalBytes": bytes,
+            "categories": ["sources": ["files": count, "bytes": bytes]],
+            "files": files, "truncated": false, "latestRun": NSNull(),
+        ]
+        try JSONSerialization.data(withJSONObject: snapshot).write(to: fixtures.appendingPathComponent("inventory-\(kind).json"))
+    }
+
+    @MainActor
     func testPackagesAndResourcesPageUsesPiSnapshot() {
         let app = launchApp(language: "zh-Hans")
 
@@ -219,10 +285,11 @@ final class PersonalPiUITests: XCTestCase {
     }
 
     @MainActor
-    private func launchApp(language: String) -> XCUIApplication {
+    private func launchApp(language: String, projectRoot: URL? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["PERSONAL_PI_UI_TESTING"] = "1"
         app.launchEnvironment["PERSONAL_PI_DATA_ROOT"] = dataRoot.path
+        if let projectRoot { app.launchEnvironment["PERSONAL_PI_UI_PROJECT_ROOT"] = projectRoot.path }
         app.launchArguments += [
             "-ApplePersistenceIgnoreState", "YES",
             "-\(appLanguageStorageKey)", language,

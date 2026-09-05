@@ -106,6 +106,7 @@ SQLite runs with foreign keys and WAL enabled. FTS entries are synchronized by i
 | `initialize` | `scope` | Create canonical directories and schema |
 | `status` | `scope` | Report document/chunk/error counts and latest run |
 | `inventory` | `scope` | List files, category/byte totals, format support, and index state |
+| `import` | `scope`, `paths` | Copy local Markdown/TXT/PDF into sources, preserve existing files, then index |
 | `index` | `scope` | Incrementally add, update, retain, and remove records |
 | `rebuild` | `scope` | Replace only the derived index, then rescan files |
 | `search` | `scopes`, `query` | Search one or more indexes and return located chunks |
@@ -150,18 +151,19 @@ The indexer hashes every supported file and records five independent counts:
 - `removed`: stale database records deleted after the source disappears;
 - `failed`: newly encountered parse or validation failures.
 
-Deleting or rebuilding an index never removes knowledge files. The runner ignores unrelated files and does not follow symlinks outside the knowledge root.
+Deleting or rebuilding an index never removes knowledge files. Rebuild replaces derived records in a single SQLite write transaction, keeping the database file valid for concurrent Pi and GUI readers. The runner ignores unrelated files and does not follow symlinks outside the knowledge root.
 
 ## 8. Current boundary
 
 The current core and Pi Package do not yet provide:
 
-- redesigned Knowledge GUI;
 - embeddings or model reranking;
 - OCR, DOCX, HTML, or web ingestion;
 - literature database adapters.
 
 The deterministic local index remains useful without those layers. See [Knowledge Plugin](knowledge-plugin.md) for the Pi tools and command contract.
+
+The Knowledge GUI now consumes `inventory`, `import`, `index`, `rebuild`, `search`, `get`, and `publish`. Inventory includes unclassified files as `other`, counts all non-hidden regular files, and returns at most the requested limit. Indexed files carry a `stale` flag based on their size and modification time. A file in `attachments/` or outside the indexed categories counts toward storage but is not searchable.
 
 ## 9. Validation
 
