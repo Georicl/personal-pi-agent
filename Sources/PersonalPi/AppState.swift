@@ -448,6 +448,8 @@ final class AppState: ObservableObject {
         piClient.abort { [weak self] success in
             guard let self else { return }
             self.agentStatus = success ? "Stopped" : "Unable to stop"
+            guard success else { return }
+            self.runLifecycle.receive("disconnected")
             self.isGenerating = false
             self.taskStore.update(
                 id: self.activeTaskId,
