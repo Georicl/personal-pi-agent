@@ -17,9 +17,11 @@ struct RootView: View {
         .background(Theme.canvas)
         .tint(Theme.accent)
         .task {
+            appState.configureKnowledge()
             appState.usageStore.refresh()
             appState.refreshSavedSessions()
         }
+        .onChange(of: appState.activeWorkingDirectory) { _ in appState.configureKnowledge() }
         .sheet(item: $appState.providerAccountRequest) { request in
             ProviderLoginView(
                 agentDirectory: URL(fileURLWithPath: appState.piRootDirectory)
@@ -68,6 +70,7 @@ struct SidebarView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     SidebarProjects()
                     SidebarNavigation(taskStore: appState.taskStore)
+                    SidebarKnowledgeSummary(store: appState.knowledgeStore)
                     SidebarRecentSessions()
                 }
                 .padding(.horizontal, 12)
@@ -486,7 +489,7 @@ struct DetailView: View {
                         SessionsView()
                     case .knowledge:
                         ScrollView(showsIndicators: false) {
-                            KnowledgeView()
+                            KnowledgeView(store: appState.knowledgeStore)
                         }
                     case .packages:
                         ScrollView(showsIndicators: false) {

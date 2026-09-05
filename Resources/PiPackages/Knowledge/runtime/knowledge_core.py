@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import uuid
@@ -20,7 +21,7 @@ SCHEMA_VERSION = 1
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt", ".pdf"}
 KNOWLEDGE_DIRECTORIES = ("inbox", "sources", "cards", "drafts", "attachments")
 INDEXED_CATEGORIES = ("inbox", "sources", "cards", "drafts", "entries")
-INVENTORY_CATEGORIES = (*KNOWLEDGE_DIRECTORIES, "entries")
+INVENTORY_CATEGORIES = (*KNOWLEDGE_DIRECTORIES, "entries", "other")
 MAX_FILE_BYTES = 50 * 1024 * 1024
 MAX_EXTRACTED_CHARACTERS = 5_000_000
 MAX_CHUNK_CHARACTERS = 4_000
@@ -141,7 +142,7 @@ def connect_scope(scope: KnowledgeScope, create: bool) -> sqlite3.Connection | N
         return None
     if create:
         ensure_scope_directories(scope)
-    connection = sqlite3.connect(scope.index_path)
+    connection = sqlite3.connect(scope.index_path, timeout=30)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
@@ -460,16 +461,19 @@ def discover_files(scope: KnowledgeScope) -> list[tuple[str, Path]]:
 
 def discover_inventory_files(scope: KnowledgeScope) -> list[tuple[str, Path]]:
     discovered: list[tuple[str, Path]] = []
-    for category in INVENTORY_CATEGORIES:
-        category_root = scope.knowledge_root / category
-        if not category_root.exists() or category_root.is_symlink():
-            continue
-        for path in category_root.rglob("*"):
-            if path.is_symlink() or not path.is_file():
+    if not scope.knowledge_root.is_dir():
+        return discovered
+    for directory, directories, files in os.walk(scope.knowledge_root, followlinks=False):
+        directories[:] = [
+            name for name in directories
+            if not name.startswith(".") and not (Path(directory) / name).is_symlink()
+        ]
+        for name in files:
+            path = Path(directory) / name
+            if name.startswith(".") or path.is_symlink() or not path.is_file():
                 continue
-            relative_parts = path.relative_to(category_root).parts
-            if any(part.startswith(".") for part in relative_parts):
-                continue
+            parts = path.relative_to(scope.knowledge_root).parts
+            category = parts[0] if len(parts) > 1 and parts[0] in INVENTORY_CATEGORIES else "other"
             discovered.append((category, path))
     return sorted(discovered, key=lambda item: item[1].as_posix().lower())
 
@@ -486,6 +490,7 @@ def inventory_scope(scope: KnowledgeScope, limit: int = 500) -> dict[str, Any]:
             rows = connection.execute(
                 """
                 SELECT d.id, d.relative_path, d.title, d.status, d.error,
+                       d.size_bytes, d.modified_ns,
                        COUNT(c.id) AS chunk_count
                 FROM documents d
                 LEFT JOIN chunks c ON c.document_id = d.id
@@ -531,12 +536,13 @@ def inventory_scope(scope: KnowledgeScope, limit: int = 500) -> dict[str, Any]:
                 "modifiedAt": datetime.fromtimestamp(
                     stat.st_mtime, timezone.utc
                 ).isoformat().replace("+00:00", "Z"),
-                "supported": path.suffix.lower() in SUPPORTED_SUFFIXES,
+                "supported": category in INDEXED_CATEGORIES and path.suffix.lower() in SUPPORTED_SUFFIXES,
                 "index": (
                     {
                         "documentId": record["id"],
                         "title": record["title"],
                         "status": record["status"],
+                        "stale": record["size_bytes"] != stat.st_size or record["modified_ns"] != stat.st_mtime_ns,
                         "chunks": record["chunk_count"],
                         "error": record["error"],
                     }
@@ -667,22 +673,19 @@ def insert_failed_document(
     )
 
 
-def remove_index_files(index_path: Path) -> None:
-    for suffix in ("", "-wal", "-shm"):
-        candidate = Path(f"{index_path}{suffix}")
-        if candidate.exists():
-            candidate.unlink()
-
-
 def index_scope(scope: KnowledgeScope, rebuild: bool = False) -> dict[str, Any]:
     started_at = utc_now()
-    if rebuild:
-        remove_index_files(scope.index_path)
     connection = connect_scope(scope, create=True)
     assert connection is not None
     counts = {"indexed": 0, "updated": 0, "unchanged": 0, "removed": 0, "failed": 0}
     failures: list[dict[str, str]] = []
     try:
+        # GUI and Pi may access the same index at once. Rebuild in one transaction
+        # so open readers retain a valid snapshot and writers cannot replace each other.
+        connection.execute("BEGIN IMMEDIATE")
+        if rebuild:
+            connection.execute("DELETE FROM documents WHERE scope_id = ?", (scope.scope_id,))
+            connection.execute("DELETE FROM indexing_runs WHERE scope_id = ?", (scope.scope_id,))
         existing_rows = connection.execute(
             "SELECT id, relative_path, content_hash, error FROM documents WHERE scope_id = ?",
             (scope.scope_id,),
@@ -711,6 +714,13 @@ def index_scope(scope: KnowledgeScope, rebuild: bool = False) -> dict[str, Any]:
                 digest = file_hash(path)
             previous = existing.get(relative_path)
             if previous and previous["content_hash"] == digest:
+                connection.execute(
+                    """
+                    UPDATE documents SET size_bytes = ?, modified_ns = ?
+                    WHERE scope_id = ? AND relative_path = ?
+                    """,
+                    (stat.st_size, stat.st_mtime_ns, scope.scope_id, relative_path),
+                )
                 counts["unchanged"] += 1
                 continue
             if stat.st_size > MAX_FILE_BYTES:
@@ -1122,6 +1132,8 @@ def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, An
     if not source.is_relative_to(knowledge_root) or source.suffix.lower() not in {".md", ".markdown"}:
         raise KnowledgeCoreError("draft path is outside the knowledge root or is not Markdown")
     metadata, content = parse_frontmatter(read_text(source))
+    if metadata.get("id") != document_id or metadata.get("status") != "draft":
+        raise KnowledgeCoreError("draft changed since indexing; refresh the index before publishing")
     metadata["status"] = "reviewed"
     metadata["updated_at"] = utc_now()
     validate_card_metadata(metadata, "cards")
@@ -1150,6 +1162,37 @@ def publish_card(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, An
     }
 
 
+def import_sources(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, Any]:
+    paths = request.get("paths")
+    if not isinstance(paths, list) or not 1 <= len(paths) <= 100:
+        raise KnowledgeCoreError("import requires 1 to 100 file paths")
+    imported: list[str] = []
+    failures: list[dict[str, str]] = []
+    for raw_path in paths:
+        try:
+            source = Path(raw_path).expanduser().resolve(strict=True)
+            if not source.is_file() or source.suffix.lower() not in SUPPORTED_SUFFIXES:
+                raise KnowledgeCoreError("supported imports are Markdown, TXT, and PDF files")
+            if source.stat().st_size > MAX_FILE_BYTES:
+                raise KnowledgeCoreError(f"file exceeds {MAX_FILE_BYTES} bytes")
+            target_root = scope.knowledge_root / "sources"
+            target_root.mkdir(parents=True, exist_ok=True)
+            destination = target_root / source.name
+            # Exclusive creation preserves existing files, including duplicate imports.
+            with destination.open("xb") as output:
+                try:
+                    with source.open("rb") as input_stream:
+                        shutil.copyfileobj(input_stream, output)
+                except Exception:
+                    destination.unlink(missing_ok=True)
+                    raise
+            imported.append(destination.relative_to(scope.knowledge_root).as_posix())
+        except Exception as error:
+            failures.append({"path": str(raw_path), "error": str(error)})
+    indexed = index_scope(scope) if imported else None
+    return {"imported": imported, "failures": failures, "index": indexed}
+
+
 def handle_request(request: dict[str, Any]) -> dict[str, Any]:
     action = str(request.get("action") or "").strip().lower()
     if action == "search":
@@ -1161,6 +1204,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
         return scope_status(scope)
     if action == "inventory":
         return inventory_scope(scope, int(request.get("limit") or 500))
+    if action == "import":
+        return import_sources(scope, request)
     if action == "index":
         return index_scope(scope, rebuild=False)
     if action == "rebuild":

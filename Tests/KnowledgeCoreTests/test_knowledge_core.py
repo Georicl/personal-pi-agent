@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -110,6 +111,78 @@ class KnowledgeCoreTests(unittest.TestCase):
         self.assertIsNotNone(files["sources/paper.txt"]["index"])
         self.assertIsNone(files["attachments/table.csv"]["index"])
         self.assertFalse(files["attachments/table.csv"]["supported"])
+
+    def test_inventory_counts_unclassified_files_and_marks_changed_sources(self) -> None:
+        core.initialize_scope(self.project_scope)
+        root = self.project_scope.knowledge_root
+        source = root / "sources" / "paper.txt"
+        source.write_text("Initial content", encoding="utf-8")
+        core.index_scope(self.project_scope)
+        source.write_text("Changed source content", encoding="utf-8")
+        (root / "loose.md").write_text("Notes", encoding="utf-8")
+        (root / ".hidden").write_text("ignored", encoding="utf-8")
+        (root / "link.txt").symlink_to(source)
+        snapshot = core.inventory_scope(self.project_scope)
+        self.assertEqual(snapshot["fileCount"], 2)
+        self.assertEqual(snapshot["totalBytes"], source.stat().st_size + 5)
+        self.assertEqual(snapshot["categories"]["other"]["files"], 1)
+        indexed = next(item for item in snapshot["files"] if item["category"] == "sources")
+        self.assertTrue(indexed["index"]["stale"])
+
+    def test_import_copies_without_overwriting_and_reports_partial_errors(self) -> None:
+        source = self.root / "paper.txt"
+        source.write_text("Original source evidence", encoding="utf-8")
+        result = core.import_sources(self.project_scope, {"paths": [str(source)]})
+        self.assertEqual(result["imported"], ["sources/paper.txt"])
+        self.assertEqual(result["index"]["indexed"], 1)
+        source.write_text("Changed input must not overwrite", encoding="utf-8")
+        duplicate = core.import_sources(self.project_scope, {"paths": [str(source)]})
+        self.assertEqual(duplicate["imported"], [])
+        self.assertEqual(len(duplicate["failures"]), 1)
+        self.assertEqual(
+            (self.project_scope.knowledge_root / "sources/paper.txt").read_text(),
+            "Original source evidence",
+        )
+        self.assertEqual(source.read_text(), "Changed input must not overwrite")
+
+    def test_reindex_clears_stale_status_after_unchanged_content_is_resaved(self) -> None:
+        core.initialize_scope(self.project_scope)
+        source = self.project_scope.knowledge_root / "sources" / "paper.txt"
+        source.write_text("Evidence", encoding="utf-8")
+        core.index_scope(self.project_scope)
+        stat = source.stat()
+        os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+        self.assertTrue(core.inventory_scope(self.project_scope)["files"][0]["index"]["stale"])
+        result = core.index_scope(self.project_scope)
+        self.assertEqual(result["unchanged"], 1)
+        self.assertFalse(core.inventory_scope(self.project_scope)["files"][0]["index"]["stale"])
+
+    def test_publish_rejects_a_draft_changed_since_indexing(self) -> None:
+        captured = core.capture_record(self.project_scope, {
+            "category": "drafts", "title": "Pending", "content": "User judgment", "sources": []
+        })
+        draft = Path(captured["path"])
+        text = draft.read_text().replace("status: draft", "status: deprecated")
+        draft.write_text(text)
+        with self.assertRaisesRegex(core.KnowledgeCoreError, "changed since indexing"):
+            core.publish_card(self.project_scope, {
+                "documentId": captured["document"]["id"], "userConfirmed": True,
+            })
+        self.assertEqual(draft.read_text(), text)
+
+    def test_rebuild_keeps_existing_database_readers_connected(self) -> None:
+        core.initialize_scope(self.global_scope)
+        source = self.global_scope.knowledge_root / "sources/paper.txt"
+        source.write_text("Initial evidence", encoding="utf-8")
+        core.index_scope(self.global_scope)
+        reader = core.connect_scope(self.global_scope, create=False)
+        try:
+            self.assertEqual(reader.execute("SELECT text FROM chunks").fetchone()[0], "Initial evidence")
+            source.write_text("Updated evidence", encoding="utf-8")
+            core.index_scope(self.global_scope, rebuild=True)
+            self.assertEqual(reader.execute("SELECT text FROM chunks").fetchone()[0], "Updated evidence")
+        finally:
+            reader.close()
 
     def test_incremental_index_search_and_removed_source_detection(self) -> None:
         core.initialize_scope(self.global_scope)

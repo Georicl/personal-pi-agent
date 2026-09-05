@@ -31,7 +31,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .overview: "diamond"
         case .sessions: "square.on.square"
-        case .knowledge: "line.3.horizontal"
+        case .knowledge: "books.vertical"
         case .packages: "shippingbox"
         case .projects: "tablecells"
         case .tasks: "diamond.inset.filled"
@@ -261,12 +261,14 @@ final class AppState: ObservableObject {
     let usageStore = AccountUsageStore()
     let taskStore = PiTaskStore()
     let figureArtifactStore: FigureArtifactStore
+    let knowledgeStore: KnowledgeLibraryStore
     let piRootDirectory: String
     let globalChatDirectory: String
     let globalKnowledgeDirectory: String
 
     init() {
         let piRoot = PersonalPiRuntimeEnvironment.piRootURL
+        knowledgeStore = KnowledgeLibraryStore(piRoot: piRoot)
         figureArtifactStore = FigureArtifactStore(
             storageURL: piRoot
                 .appendingPathComponent("agent", isDirectory: true)
@@ -1185,12 +1187,9 @@ final class AppState: ObservableObject {
         projectKnowledgeDirectory(for: workspace.path)
     }
 
-    var globalKnowledgeFileCount: Int {
-        Self.fileCount(at: globalKnowledgeDirectory)
-    }
-
-    var projectKnowledgeFileCount: Int {
-        Self.fileCount(at: projectKnowledgeDirectory)
+    func configureKnowledge() {
+        knowledgeStore.configure(projectRoot: workspaceScope == .workspace
+            ? URL(fileURLWithPath: workspace.path, isDirectory: true) : nil)
     }
 
     func openGlobalKnowledge() {
@@ -1254,7 +1253,9 @@ final class AppState: ObservableObject {
     }
 
     private static func discoverWorkspacePaths() -> [String] {
-        guard !PersonalPiRuntimeEnvironment.isUITesting else { return [] }
+        if PersonalPiRuntimeEnvironment.isUITesting {
+            return ProcessInfo.processInfo.environment["PERSONAL_PI_UI_PROJECT_ROOT"].map { [$0] } ?? []
+        }
         var paths: [String] = []
         let fileManager = FileManager.default
         func appendIfExists(_ raw: String) {
@@ -1365,6 +1366,9 @@ final class AppState: ObservableObject {
             taskStore.update(id: activeTaskId, state: .running, detail: "Running \(toolName)")
         case "tool_execution_end":
             let toolName = event.toolName ?? "tool"
+            if ["knowledge_capture", "knowledge_publish", "knowledge_index"].contains(toolName) {
+                knowledgeStore.knowledgeChanged()
+            }
             upsertActivity(
                 id: event.toolCallId ?? "tool-\(toolName)",
                 toolName: toolName,

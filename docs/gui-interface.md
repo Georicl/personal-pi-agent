@@ -47,7 +47,7 @@ AppSection 与页面映射：
 |---|---|---|
 | .overview | OverviewView | 当前作用域快捷对话、账户和用量摘要 |
 | .sessions | SessionsView | 会话目录、消息、工具活动和会话操作 |
-| .knowledge | KnowledgeView | Global/Project 知识目录入口 |
+| .knowledge | KnowledgeView | Global/Project 文件、容量、分类、检索、导入、索引与审阅发布 |
 | .packages | PackagesView | Packages 与资源配置 |
 | .projects | ProjectsView | 项目注册、Git 与会话统计 |
 | .tasks | TasksView | 任务状态与未读结果 |
@@ -339,6 +339,16 @@ UI 测试支持：
    Knowledge Core 必须运行 `scripts/check-knowledge-core.sh`，检查作用域、结构化卡片、增量索引、PDF 定位、中英文检索和 JSON 协议。
    Knowledge Pi Package 还必须运行 `scripts/check-knowledge-plugin.sh`，检查真实 Pi RPC 中的命令、Skill、Extension 和运行时调用。
 5. Manual GUI smoke：检查 Finder 启动、真实作用域切换、会话恢复和视觉布局。
+
+### 11.1 Knowledge GUI
+
+`AppState.knowledgeStore` 持有 `KnowledgeLibraryStore`，`KnowledgeView` 与 `SidebarKnowledgeSummary` 观察同一份状态。Project 切换调用 `configure(projectRoot:)`，立即清空旧内容并更新请求代号；旧请求的延迟响应不能更新新项目。文件列表、搜索与详情各有独立请求代号，避免重复刷新和点击导致结果错位。
+
+`KnowledgeCoreClient` 使用 JSON stdin/stdout 调用内置 `Knowledge/runtime/knowledge_core.py`。Python 环境位于动态 Pi 根目录下的 `agent/environments/knowledge`，由锁文件同步；运行、解析和文件统计在后台执行，单次子进程有 120 秒超时。页面数据通过有类型的 Swift 模型解码，业务 UI 不读取 SQLite。
+
+侧边栏仅用 `KnowledgeDirectorySummary` 读取文件数和字节总量，不启动 Python。页面支持 Global/当前 Project 切换、所有文件/分类筛选、文件名过滤、已索引内容搜索、文本详情、Finder 打开、文件导入、增量索引、重建，以及用户点击后发布已审阅草稿。`knowledge_capture`、`knowledge_publish`、`knowledge_index` 完成后刷新知识库。容量统计包含未分类文件和附件，不包含隐藏文件和符号链接；错误和未索引状态必须明确显示。
+
+测试入口：`KnowledgeLibraryTests` 覆盖解码、时间、容量、延迟响应隔离；设置 `PERSONAL_PI_TEST_KNOWLEDGE_RUNTIME=1` 可运行真实 Swift/Python 导入到检索流程。XCUITest 使用 `PERSONAL_PI_UI_TESTING` 下的临时 JSON fixture，不访问真实用户知识库；知识页面测试覆盖中文文案、分类筛选和 Project/Global 切换。
 
 ## 12. 新功能接入模板
 
