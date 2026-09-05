@@ -95,6 +95,14 @@ AppState 标记为 @MainActor。View 可以订阅 Published 状态并调用 acti
 
 ### 4.1 对话与运行状态
 
+PiRunLifecycle 区分 idle/running/waiting。`turn_end`、`agent_end`、`extension_error`
+不是整个任务完成；只有 `agent_settled`、明确中止或断开连接才结束运行。
+PiRPCClient 的可变连接状态与回调在 MainActor 串行处理。每次连接有独立 generation，
+旧进程的数据、退出事件和定时器不得更新新连接。断开会清空缓冲区并取消、完成所有
+pending 请求。普通请求默认 30 秒，启动 5 秒，压缩/内部扩展命令 600 秒。
+Pi 0.84.x 的 new_session 空闲超时回退只允许当前连接触发，取消不触发重启。
+包管理切换项目会清空旧上下文的 busy、快照和未保存路径编辑，并忽略旧回调。
+
 | 状态 | 用途 |
 |---|---|
 | connectionState / isPiRunning | Pi CLI 连接状态 |
