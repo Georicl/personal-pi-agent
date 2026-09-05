@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# Keep the supported compiler baseline explicit instead of inheriting changes
+# to the macos-15 runner's default Xcode selection.
+env:
+  DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+
 concurrency:
   group: checks-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -19,6 +24,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Compiler baseline
+        run: xcodebuild -version && swift --version
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           version: '0.12.0'
@@ -34,6 +41,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Compiler baseline
+        run: xcodebuild -version && swift --version
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'

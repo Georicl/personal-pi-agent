@@ -2,6 +2,10 @@
 
 This file records the Pi runtime contract that Personal Pi has actually checked. It is not a promise that every future Pi release has the same behavior.
 
+## Compiler baseline
+
+GitHub Actions explicitly selects Xcode 16.4 / Swift 6.1.2 on `macos-15` for both jobs. A successful build with a newer local Xcode does not replace this compatibility check. Keep construction of MainActor-owned dependencies inside initializer bodies: an isolated `PiRPCClient()` default argument on `AppState.init` triggered a Swift 6.1.2 compiler crash when lowering the app delegate's stored-property initializer. The no-argument convenience initializer preserves production startup and the explicit-client initializer preserves test injection without that default-argument thunk.
+
 ## Verified baseline
 
 | Component | Verified value | Evidence |

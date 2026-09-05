@@ -293,7 +293,14 @@ final class AppState: ObservableObject {
     let globalChatDirectory: String
     let globalKnowledgeDirectory: String
 
-    init(client: PiRPCClient = PiRPCClient(), runtimeContext: PiRuntimeContext = .current,
+    /// Build the MainActor-owned client inside the initializer, not in a default
+    /// argument thunk. Swift 6.1.2 crashes lowering AppState() in the app
+    /// delegate's stored-property initializer when that default is isolated.
+    convenience init() {
+        self.init(client: PiRPCClient())
+    }
+
+    init(client: PiRPCClient, runtimeContext: PiRuntimeContext = .current,
          workspacePaths: [String]? = nil, refreshAccounts: Bool = true) {
         sessionCoordinator = PiSessionCoordinator(client: client)
         self.refreshAccounts = refreshAccounts
