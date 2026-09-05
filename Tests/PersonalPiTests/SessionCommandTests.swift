@@ -204,6 +204,22 @@ struct RPCConnectionTests {
         #expect(client.processIdentifier == nil)
         #expect(client.pendingRequestCount == 0)
     }
+
+    @Test("RPC pipe back-pressure does not block MainActor")
+    func nonblockingWrites() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = makeClient()
+        defer { client.stop() }
+        var connected = false
+        client.start(workingDirectory: root.appendingPathComponent("blocked").path) { ok, _ in connected = ok }
+        try await waitFor { connected }
+        let start = ContinuousClock.now
+        client.sendPrompt(String(repeating: "x", count: 1_000_000))
+        #expect(start.duration(to: .now) < .seconds(1))
+        client.stop()
+        #expect(client.pendingRequestCount == 0)
+    }
 }
 
 private extension Array where Element: Equatable {

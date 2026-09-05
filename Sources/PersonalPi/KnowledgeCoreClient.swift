@@ -195,40 +195,8 @@ private struct KnowledgeCoreConfiguration: Sendable {
     let workingDirectory: URL
 }
 
-private final class KnowledgeProcessCapture: @unchecked Sendable {
-    let output = Pipe()
-    let error = Pipe()
-    private let group = DispatchGroup()
-    private let lock = NSLock()
-    private var outputData = Data()
-    private var errorData = Data()
-
-    func start() {
-        drain(output, isError: false)
-        drain(error, isError: true)
-    }
-
-    func wait() -> (output: Data, error: Data) {
-        group.wait()
-        lock.lock()
-        defer { lock.unlock() }
-        return (outputData, errorData)
-    }
-
-    private func drain(_ pipe: Pipe, isError: Bool) {
-        group.enter()
-        DispatchQueue.global(qos: .utility).async { [self] in
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            lock.lock()
-            if isError { errorData = data }
-            else { outputData = data }
-            lock.unlock()
-            group.leave()
-        }
-    }
-}
-
 enum KnowledgeCoreClient {
+    private static let prepared = PiPreparedEnvironments()
     private static let queue = DispatchQueue(
         label: "dev.pi.personal.knowledge-core",
         qos: .userInitiated
@@ -362,6 +330,7 @@ enum KnowledgeCoreClient {
                 )
                 completion(.success(output))
             } catch {
+                prepared.remove(PiRuntimeContext(dataRoot: piRoot).knowledgeEnvironment)
                 completion(.failure(error))
             }
         }
@@ -391,10 +360,7 @@ enum KnowledgeCoreClient {
             runnerURL: runnerURL,
             pyprojectURL: pyprojectURL,
             lockURL: lockURL,
-            environmentURL: piRoot
-                .appendingPathComponent("agent", isDirectory: true)
-                .appendingPathComponent("environments", isDirectory: true)
-                .appendingPathComponent("knowledge", isDirectory: true),
+            environmentURL: PiRuntimeContext(dataRoot: piRoot).knowledgeEnvironment,
             workingDirectory: workingDirectory
         )
     }
@@ -407,9 +373,13 @@ enum KnowledgeCoreClient {
         )
         let projectDestination = configuration.environmentURL.appendingPathComponent("pyproject.toml")
         let lockDestination = configuration.environmentURL.appendingPathComponent("uv.lock")
-        _ = try copyIfChanged(configuration.pyprojectURL, to: projectDestination)
-        _ = try copyIfChanged(configuration.lockURL, to: lockDestination)
+        let projectChanged = try copyIfChanged(configuration.pyprojectURL, to: projectDestination)
+        let lockChanged = try copyIfChanged(configuration.lockURL, to: lockDestination)
         let pythonURL = configuration.environmentURL.appendingPathComponent(".venv/bin/python")
+        if !projectChanged, !lockChanged, prepared.contains(configuration.environmentURL),
+           fileManager.isExecutableFile(atPath: pythonURL.path) {
+            return pythonURL
+        }
         _ = try runProcess(
                 executable: URL(fileURLWithPath: configuration.uvExecutable),
                 arguments: [
@@ -428,6 +398,7 @@ enum KnowledgeCoreClient {
                 "Knowledge Python environment was not created"
             )
         }
+        prepared.insert(configuration.environmentURL)
         return pythonURL
     }
 
@@ -447,45 +418,14 @@ enum KnowledgeCoreClient {
         workingDirectory: URL,
         extraEnvironment: [String: String] = [:]
     ) throws -> Data {
-        let process = Process()
-        let capture = KnowledgeProcessCapture()
-        let standardInput = Pipe()
-        let finished = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in finished.signal() }
-        process.executableURL = executable
-        process.arguments = arguments
-        process.currentDirectoryURL = workingDirectory
         var environment = PiLaunchConfiguration.processEnvironment()
         extraEnvironment.forEach { environment[$0.key] = $0.value }
         environment["PYTHONUNBUFFERED"] = "1"
-        process.environment = environment
-        process.standardInput = standardInput
-        process.standardOutput = capture.output
-        process.standardError = capture.error
-        do {
-            try process.run()
-        } catch {
-            throw KnowledgeCoreClientError.launchFailed(error.localizedDescription)
-        }
-        capture.start()
-        if let input {
-            standardInput.fileHandleForWriting.write(input)
-        }
-        standardInput.fileHandleForWriting.closeFile()
-        if finished.wait(timeout: .now() + 120) == .timedOut {
-            process.terminate()
-            if finished.wait(timeout: .now() + 2) == .timedOut {
-                kill(process.processIdentifier, SIGKILL)
-            }
-            throw KnowledgeCoreClientError.operationFailed("Knowledge operation timed out")
-        }
-        let captured = capture.wait()
-        guard process.terminationStatus == 0 else {
-            let detail = String(data: captured.error, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw KnowledgeCoreClientError.operationFailed(
-                detail?.isEmpty == false ? detail! : "Knowledge process failed"
-            )
+        let captured = try PiProcessRunner.run(executable: executable, arguments: arguments,
+            workingDirectory: workingDirectory, environment: environment, input: input)
+        guard captured.status == 0 else {
+            let detail = String(data: captured.error, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw KnowledgeCoreClientError.operationFailed(detail?.isEmpty == false ? detail! : "Knowledge process failed")
         }
         return captured.output
     }

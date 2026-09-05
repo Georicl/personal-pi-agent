@@ -35,12 +35,7 @@ enum PersonalPiRuntimeEnvironment {
     }
 
     static var piRootURL: URL {
-        if let override = ProcessInfo.processInfo.environment["PERSONAL_PI_DATA_ROOT"],
-           !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return URL(fileURLWithPath: override, isDirectory: true).standardizedFileURL
-        }
-        return URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".pi", isDirectory: true)
+        PiRuntimeContext.current.piRoot
     }
 
     static var externalProcessesDisabled: Bool {

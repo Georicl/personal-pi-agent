@@ -177,39 +177,6 @@ private struct PiPackageBridgeConfiguration: Sendable {
     let workingDirectory: URL
 }
 
-private final class PiPackageProcessCapture: @unchecked Sendable {
-    let output = Pipe()
-    let error = Pipe()
-    private let group = DispatchGroup()
-    private let lock = NSLock()
-    private var outputData = Data()
-    private var errorData = Data()
-
-    func start() {
-        drain(output, isError: false)
-        drain(error, isError: true)
-    }
-
-    func wait() -> (output: Data, error: Data) {
-        group.wait()
-        lock.lock()
-        defer { lock.unlock() }
-        return (outputData, errorData)
-    }
-
-    private func drain(_ pipe: Pipe, isError: Bool) {
-        group.enter()
-        DispatchQueue.global(qos: .utility).async { [self] in
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            lock.lock()
-            if isError { errorData = data }
-            else { outputData = data }
-            lock.unlock()
-            group.leave()
-        }
-    }
-}
-
 private struct PiPackageSourcePayload: Encodable {
     let source: String?
     let scope: PiPackageScope?
@@ -453,33 +420,20 @@ enum PiPackageBridge {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            let process = Process()
-            let capture = PiPackageProcessCapture()
-            process.executableURL = URL(fileURLWithPath: configuration.nodeExecutable)
-            process.arguments = [
-                configuration.scriptURL.path,
-                mode,
-                configuration.piExecutable,
-                configuration.workingDirectory.path,
-                encodedPayload
-            ]
-            process.currentDirectoryURL = FileManager.default.temporaryDirectory
             var environment = PiLaunchConfiguration.processEnvironment()
             environment["PI_CODING_AGENT_DIR"] = configuration.agentDirectory.path
-            process.environment = environment
-            process.standardOutput = capture.output
-            process.standardError = capture.error
-
+            let captured: PiProcessResult
             do {
-                try process.run()
+                captured = try PiProcessRunner.run(
+                    executable: URL(fileURLWithPath: configuration.nodeExecutable),
+                    arguments: [configuration.scriptURL.path, mode, configuration.piExecutable,
+                                configuration.workingDirectory.path, encodedPayload],
+                    workingDirectory: FileManager.default.temporaryDirectory,
+                    environment: environment, timeout: 600)
             } catch {
-                completion(.failure(PiPackageBridgeError.launchFailed(error.localizedDescription)))
+                completion(.failure(error))
                 return
             }
-
-            capture.start()
-            process.waitUntilExit()
-            let captured = capture.wait()
             if !captured.output.isEmpty {
                 completion(.success(captured.output))
                 return

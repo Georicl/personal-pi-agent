@@ -2,7 +2,7 @@
 
 Personal Pi 是一个以 [Pi Coding Agent](https://pi.dev/) 为运行时的原生 macOS 桌面客户端。它保留 Pi 的 Agent 循环、工具调用、会话树、上下文压缩、Skills、Extensions 与 Packages，同时提供项目切换、会话总览、任务状态、账户状态和图形化配置。
 
-当前版本定位为 **GUI 基础能力完成 + 首个插件可用**：已经可以作为日常 Pi 桌面外壳，并能完成基于表格数据的出版级绘图；后续开发重点继续转向学术编辑、个人知识库与更多结构化产物。
+当前版本提供 Pi 桌面外壳、表格数据绘图和 Global/Project 本地知识库。连接生命周期、任务完成判断、知识来源身份和配置模块已有独立回归测试；后续开发继续面向学术编辑与文献工作流。
 
 ## 系统要求
 
@@ -214,6 +214,7 @@ GUI 已完成 Pi 的核心使用闭环，但不宣称与全部 Pi CLI/TUI/RPC �
 
 ```bash
 swift test
+PERSONAL_PI_TEST_KNOWLEDGE_RUNTIME=1 swift test --parallel
 swift build -c release -Xswiftc -warnings-as-errors
 xcodebuild test -project PersonalPi.xcodeproj -scheme PersonalPi -destination 'platform=macOS'
 scripts/check-pi-compatibility.sh
@@ -221,19 +222,26 @@ scripts/check-session-rpc.sh
 scripts/check-package-bridge.sh
 scripts/check-starter-pack.sh
 scripts/check-figure-plugin.sh
+scripts/check-knowledge-plugin.sh
 scripts/build-app.sh debug
 ```
 
 环境覆盖项：
 
+PR 和 main 推送会运行 `.github/workflows/checks.yml`：Swift 单元及本地 Python 集成测试、
+严格 Release 构建、Xcode 构建、Knowledge/Figure 包检查。Pi 包检查使用固定版本的离线运行时，
+不需要模型 API 凭证。交互式 XCUITest 仍需本机允许系统 UI 自动化。
+
 | 环境变量 | 作用 |
 |---|---|
+| `PERSONAL_PI_DATA_ROOT` | 覆盖 `.pi` 数据根，默认用户目录下的 `.pi` |
+| `PI_CODING_AGENT_DIR` | Pi 原生认证与设置目录；未指定时为 `<数据根>/agent` |
+| `PERSONAL_PI_KNOWLEDGE_ENVIRONMENT` | 覆盖知识库的受管理 Python 环境 |
 | `PERSONAL_PI_EXECUTABLE` | 指定 Pi CLI |
 | `PERSONAL_PI_NODE_EXECUTABLE` | 指定 Node.js |
 | `PERSONAL_PI_CODEX_EXECUTABLE` | 指定 Codex CLI |
 | `PERSONAL_PI_UV_EXECUTABLE` | 指定 uv 可执行文件 |
 | `PERSONAL_PI_FIGURE_ENVIRONMENT` | 覆盖受管理的绘图 Python 环境 |
-| `PERSONAL_PI_DATA_ROOT` | 覆盖 `~/.pi`，主要用于测试 |
 | `PERSONAL_PI_DISABLE_EXTERNAL_PROCESSES` | 禁止 Pi、Node、Codex 子进程，主要用于测试 |
 | `PI_CODING_AGENT_SESSION_DIR` | 按 Pi 原生优先级覆盖会话目录 |
 
