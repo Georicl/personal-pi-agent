@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C00000000000000000000010 /* LiteratureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000010 /* LiteratureTests.swift */; };
+		A00000000000000000000028 /* LiteratureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000028 /* LiteratureStore.swift */; };
+		A00000000000000000000029 /* LiteratureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000029 /* LiteratureView.swift */; };
 		C00000000000000000000008 /* KnowledgeLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000008 /* KnowledgeLibraryTests.swift */; };
 		A00000000000000000000022 /* KnowledgeLibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000022 /* KnowledgeLibraryStore.swift */; };
 		A00000000000000000000021 /* KnowledgeCoreClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000021 /* KnowledgeCoreClient.swift */; };
@@ -75,6 +78,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		T00000000000000000000010 /* LiteratureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteratureTests.swift; sourceTree = "<group>"; };
+		S00000000000000000000028 /* LiteratureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteratureStore.swift; sourceTree = "<group>"; };
+		S00000000000000000000029 /* LiteratureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteratureView.swift; sourceTree = "<group>"; };
 		T00000000000000000000008 /* KnowledgeLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeLibraryTests.swift; sourceTree = "<group>"; };
 		S00000000000000000000022 /* KnowledgeLibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeLibraryStore.swift; sourceTree = "<group>"; };
 		S00000000000000000000021 /* KnowledgeCoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeCoreClient.swift; sourceTree = "<group>"; };
@@ -169,6 +175,8 @@
 				S00000000000000000000027 /* SessionCatalog.swift */,
 				S00000000000000000000022 /* KnowledgeLibraryStore.swift */,
 				S00000000000000000000021 /* KnowledgeCoreClient.swift */,
+				S00000000000000000000028 /* LiteratureStore.swift */,
+				S00000000000000000000029 /* LiteratureView.swift */,
 				S00000000000000000000005 /* OverviewView.swift */,
 				S00000000000000000000006 /* PersonalPiApp.swift */,
 				S00000000000000000000007 /* PiRPCClient.swift */,
@@ -223,6 +231,7 @@
 				T00000000000000000000007 /* FigureArtifactTests.swift */,
 				T00000000000000000000009 /* RuntimeServicesTests.swift */,
 				T00000000000000000000008 /* KnowledgeLibraryTests.swift */,
+				T00000000000000000000010 /* LiteratureTests.swift */,
 				T00000000000000000000004 /* ProviderAuthTests.swift */,
 				T00000000000000000000001 /* SettingsFileTests.swift */,
 				T00000000000000000000002 /* WorkspaceAndLanguageTests.swift */,
@@ -351,6 +360,8 @@
 				A00000000000000000000027 /* SessionCatalog.swift in Sources */,
 				A00000000000000000000022 /* KnowledgeLibraryStore.swift in Sources */,
 				A00000000000000000000021 /* KnowledgeCoreClient.swift in Sources */,
+				A00000000000000000000028 /* LiteratureStore.swift in Sources */,
+				A00000000000000000000029 /* LiteratureView.swift in Sources */,
 				A00000000000000000000005 /* OverviewView.swift in Sources */,
 				A00000000000000000000006 /* PersonalPiApp.swift in Sources */,
 				A00000000000000000000007 /* PiRPCClient.swift in Sources */,
@@ -374,7 +385,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		F30000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000001, C00000000000000000000002, C00000000000000000000003, C00000000000000000000004, C00000000000000000000005, C00000000000000000000006, C00000000000000000000007, C00000000000000000000008, C00000000000000000000009); runOnlyForDeploymentPostprocessing = 0; };
+		F30000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000001, C00000000000000000000002, C00000000000000000000003, C00000000000000000000004, C00000000000000000000005, C00000000000000000000006, C00000000000000000000007, C00000000000000000000008, C00000000000000000000009, C00000000000000000000010); runOnlyForDeploymentPostprocessing = 0; };
 		F30000000000000000000003 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (D00000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

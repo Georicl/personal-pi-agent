@@ -156,19 +156,19 @@ function parseRunnerOutput(result) {
   throw new Error(result.stderr.trim() || result.stdout.trim() || "Knowledge runner failed");
 }
 
-async function runCore(ctx, request, signal, onUpdate) {
-  if (![runnerPath, bundledProjectPath, bundledLockPath].every(existsSync)) {
+export async function runCore(ctx, request, signal, onUpdate, runtimeRunner = runnerPath) {
+  if (![runtimeRunner, bundledProjectPath, bundledLockPath].every(existsSync)) {
     throw new Error("Knowledge plugin runtime resources are incomplete");
   }
   const python = await managedPython(ctx.cwd, signal, onUpdate);
   const result = await runProcess(
     python,
-    [runnerPath],
+    [runtimeRunner],
     JSON.stringify({ ...request, piRoot: resolvedPiRoot() }),
     {
       cwd: ctx.cwd,
       signal,
-      env: { ...process.env, PYTHONUNBUFFERED: "1" },
+      env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" },
     },
   );
   const payload = parseRunnerOutput(result);

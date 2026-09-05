@@ -7,6 +7,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case overview
     case sessions
     case knowledge
+    case literature
     case packages
     case projects
     case tasks
@@ -20,6 +21,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .overview: "Overview"
         case .sessions: "Sessions"
         case .knowledge: "Knowledge"
+        case .literature: "Literature"
         case .packages: "Packages"
         case .projects: "Projects"
         case .tasks: "Tasks"
@@ -33,6 +35,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .overview: "diamond"
         case .sessions: "square.on.square"
         case .knowledge: "books.vertical"
+        case .literature: "doc.text.magnifyingglass"
         case .packages: "shippingbox"
         case .projects: "tablecells"
         case .tasks: "diamond.inset.filled"
@@ -292,6 +295,7 @@ final class AppState: ObservableObject {
     let usageStore = AccountUsageStore()
     let taskStore: PiTaskStore
     let figureArtifactStore: FigureArtifactStore
+    let literatureStore: LiteratureStore
     let knowledgeStore: KnowledgeLibraryStore
     let piRootDirectory: String
     let globalChatDirectory: String
@@ -311,6 +315,7 @@ final class AppState: ObservableObject {
         let piRoot = runtimeContext.piRoot
         taskStore = PiTaskStore(storageURL: runtimeContext.agentDirectory.appendingPathComponent("personal-pi-tasks.json"))
         knowledgeStore = KnowledgeLibraryStore(piRoot: piRoot)
+        literatureStore = LiteratureStore(piRoot: piRoot)
         figureArtifactStore = FigureArtifactStore(
             storageURL: runtimeContext.agentDirectory
                 .appendingPathComponent("personal-pi-figure-artifacts.json")
@@ -1337,8 +1342,30 @@ final class AppState: ObservableObject {
     }
 
     func configureKnowledge() {
+        literatureStore.configure(cwd: activeWorkingDirectory)
         knowledgeStore.configure(projectRoot: workspaceScope == .workspace
             ? URL(fileURLWithPath: workspace.path, isDirectory: true) : nil)
+    }
+
+    var canRequestLiteratureAgent: Bool {
+        !isGenerating && !isSessionTransitioning && pendingSession == nil &&
+            !pendingNewSession && pendingPrompt == nil && composerText.isEmpty
+    }
+
+    func prepareLiteraturePlan() {
+        guard canRequestLiteratureAgent else { return }
+        let question = literatureStore.question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty else { return }
+        let requestID = literatureStore.beginPlanRequest()
+        composerText = "Prepare editable Europe PMC search conditions for this question. Use literature_plan with requestId=\(requestID), explain the terms and limits, and stop for my review. Do not search or save yet. Question: \(question)"
+        sendPrompt()
+    }
+
+    func summarizeLiteratureSources() {
+        guard canRequestLiteratureAgent, !literatureStore.saved.isEmpty else { return }
+        let ids = literatureStore.saved.map(\.sourceId).joined(separator: ", ")
+        composerText = "Read these saved Knowledge source IDs in the current scope using knowledge_get: \(ids). Summarize their abstracts, separating source facts from synthesis and inference, citing local source IDs and identifying missing evidence. Full texts have not been read. Save the summary with literature_draft as an unreviewed draft only; do not publish."
+        sendPrompt()
     }
 
     func openGlobalKnowledge() {
@@ -1563,7 +1590,7 @@ final class AppState: ObservableObject {
             taskStore.update(id: activeTaskId, state: .running, detail: "Running \(toolName)")
         case "tool_execution_end":
             let toolName = event.toolName ?? "tool"
-            if ["knowledge_capture", "knowledge_publish", "knowledge_index"].contains(toolName) {
+            if ["knowledge_capture", "knowledge_publish", "knowledge_index", "literature_save", "literature_draft"].contains(toolName) {
                 knowledgeStore.knowledgeChanged()
             }
             upsertActivity(
@@ -1575,6 +1602,11 @@ final class AppState: ObservableObject {
             if let artifact = event.figureArtifact {
                 figureArtifactStore.upsert(artifact)
                 isArtifactSidebarVisible = true
+            }
+            if let literature = event.literature, event.toolIsError != true {
+                if literatureStore.accept(literature), literature.plan != nil || literature.search != nil {
+                    selectedSection = .literature
+                }
             }
             agentStatus = event.toolIsError == true ? "Tool failed" : "Processing result…"
         case "compaction_start":

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "literature",
+  "displayName": "Literature",
+  "command": "literature",
+  "artifacts": [],
+  "settingsNamespace": "literature",
+  "gui": { "toolbarButton": false, "artifactSidebar": false }
+}

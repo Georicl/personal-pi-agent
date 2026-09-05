@@ -59,6 +59,31 @@ final class PersonalPiUITests: XCTestCase {
     }
 
     @MainActor
+    func testLiteratureNavigationAndEditableConditions() {
+        let app = launchApp(language: "zh-Hans")
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        app.buttons["文献检索"].click()
+        XCTAssertTrue(app.staticTexts["literature-heading"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.textFields["literature-question"].exists)
+        XCTAssertTrue(app.buttons["literature-plan-button"].exists)
+        let query = app.descendants(matching: .any)["literature-query"].firstMatch
+        XCTAssertTrue(query.exists)
+        query.click()
+        query.typeText("CD4 AND T cell")
+        let from = app.textFields["literature-year-from"]
+        from.click(); from.typeText("xx")
+        let search = app.buttons["literature-search-button"]
+        XCTAssertTrue(search.isEnabled)
+        search.click()
+        XCTAssertTrue(app.staticTexts["literature-error"].waitForExistence(timeout: 4))
+        XCTAssertFalse(app.buttons["literature-save-button"].exists)
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "Literature conditions in Chinese"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     func testFigurePreviewSidebarCanBeOpenedFromAnyPage() throws {
         try prepareFigureArtifact()
         let app = launchApp(language: "zh-Hans")

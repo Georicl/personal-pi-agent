@@ -1139,6 +1139,12 @@ def capture_record(scope: KnowledgeScope, request: dict[str, Any]) -> dict[str, 
         "sources": json_safe(sources),
         "tags": tags,
     }
+    # Optional structured provenance supplied by ingestion adapters, never used
+    # to override Knowledge-owned IDs, status, source links or timestamps.
+    if "provenance" in request:
+        if not isinstance(request["provenance"], dict):
+            raise KnowledgeCoreError("capture provenance must be an object")
+        metadata["provenance"] = json_safe(request["provenance"])
     if category == "drafts":
         metadata["type"] = str(request.get("type") or "note").strip()
         metadata["confidence"] = str(request.get("confidence") or "unknown").strip().lower()
