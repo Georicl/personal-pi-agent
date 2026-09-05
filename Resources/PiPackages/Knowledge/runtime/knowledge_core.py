@@ -15,6 +15,7 @@ from typing import Any
 
 import yaml
 from pypdf import PdfReader
+from source_identity import SourceIdentities
 
 
 SCHEMA_VERSION = 1
@@ -383,9 +384,10 @@ def extract_document(
     scope: KnowledgeScope,
     path: Path,
     category: str,
+    source_id: str | None = None,
 ) -> ExtractedDocument:
     relative_path = path.relative_to(scope.knowledge_root).as_posix()
-    fallback_id = stable_id(scope.scope_id, relative_path, prefix="source")
+    fallback_id = source_id or stable_id(scope.scope_id, relative_path, prefix="source")
     suffix = path.suffix.lower()
     metadata: dict[str, Any] = {}
 
@@ -641,9 +643,10 @@ def insert_failed_document(
     digest: str,
     stat: os.stat_result,
     error: Exception,
+    source_id: str | None = None,
 ) -> None:
     relative_path = path.relative_to(scope.knowledge_root).as_posix()
-    document_id = stable_id(scope.scope_id, relative_path, prefix="source")
+    document_id = source_id or stable_id(scope.scope_id, relative_path, prefix="source")
     connection.execute(
         "DELETE FROM documents WHERE scope_id = ? AND relative_path = ?",
         (scope.scope_id, relative_path),
@@ -683,11 +686,8 @@ def index_scope(scope: KnowledgeScope, rebuild: bool = False) -> dict[str, Any]:
         # GUI and Pi may access the same index at once. Rebuild in one transaction
         # so open readers retain a valid snapshot and writers cannot replace each other.
         connection.execute("BEGIN IMMEDIATE")
-        if rebuild:
-            connection.execute("DELETE FROM documents WHERE scope_id = ?", (scope.scope_id,))
-            connection.execute("DELETE FROM indexing_runs WHERE scope_id = ?", (scope.scope_id,))
         existing_rows = connection.execute(
-            "SELECT id, relative_path, content_hash, error FROM documents WHERE scope_id = ?",
+            "SELECT id, relative_path, content_hash, category, error FROM documents WHERE scope_id = ?",
             (scope.scope_id,),
         ).fetchall()
         existing = {row["relative_path"]: row for row in existing_rows}
@@ -695,6 +695,17 @@ def index_scope(scope: KnowledgeScope, rebuild: bool = False) -> dict[str, Any]:
         discovered_paths = {
             path.relative_to(scope.knowledge_root).as_posix() for _, path in discovered
         }
+        file_states = {}
+        for category, path in discovered:
+            stat = path.stat()
+            digest = (hashlib.sha256(f"oversize:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()
+                      if stat.st_size > MAX_FILE_BYTES else file_hash(path))
+            file_states[path.relative_to(scope.knowledge_root).as_posix()] = (stat, digest)
+        identities = SourceIdentities(scope.knowledge_root, existing_rows,
+                                      {path: digest for path, (_, digest) in file_states.items()})
+        if rebuild:
+            connection.execute("DELETE FROM documents WHERE scope_id = ?", (scope.scope_id,))
+            connection.execute("DELETE FROM indexing_runs WHERE scope_id = ?", (scope.scope_id,))
         removed_paths = sorted(set(existing) - discovered_paths)
         for relative_path in removed_paths:
             connection.execute(
@@ -705,15 +716,10 @@ def index_scope(scope: KnowledgeScope, rebuild: bool = False) -> dict[str, Any]:
 
         for category, path in discovered:
             relative_path = path.relative_to(scope.knowledge_root).as_posix()
-            stat = path.stat()
-            if stat.st_size > MAX_FILE_BYTES:
-                digest = hashlib.sha256(
-                    f"oversize:{stat.st_size}:{stat.st_mtime_ns}".encode("utf-8")
-                ).hexdigest()
-            else:
-                digest = file_hash(path)
+            stat, digest = file_states[relative_path]
             previous = existing.get(relative_path)
-            if previous and previous["content_hash"] == digest:
+            source_id = identities.resolve(relative_path, digest) if category in {'sources', 'inbox'} else None
+            if previous and previous["content_hash"] == digest and not rebuild:
                 connection.execute(
                     """
                     UPDATE documents SET size_bytes = ?, modified_ns = ?
@@ -725,16 +731,22 @@ def index_scope(scope: KnowledgeScope, rebuild: bool = False) -> dict[str, Any]:
                 continue
             if stat.st_size > MAX_FILE_BYTES:
                 error = KnowledgeCoreError(f"file exceeds {MAX_FILE_BYTES} bytes")
-                insert_failed_document(connection, scope, path, category, digest, stat, error)
+                insert_failed_document(connection, scope, path, category, digest, stat, error, source_id)
+                if source_id:
+                    identities.record(relative_path, digest, source_id)
                 counts["failed"] += 1
                 failures.append({"path": relative_path, "error": str(error)})
                 continue
             try:
-                extracted = extract_document(scope, path, category)
+                extracted = extract_document(scope, path, category, source_id)
                 insert_document(connection, scope, path, category, extracted, digest, stat)
-                counts["updated" if previous else "indexed"] += 1
+                if source_id:
+                    identities.record(relative_path, digest, extracted.document_id)
+                counts["updated" if previous and not rebuild else "indexed"] += 1
             except Exception as error:
-                insert_failed_document(connection, scope, path, category, digest, stat, error)
+                insert_failed_document(connection, scope, path, category, digest, stat, error, source_id)
+                if source_id:
+                    identities.record(relative_path, digest, source_id)
                 counts["failed"] += 1
                 failures.append({"path": relative_path, "error": str(error)})
 
@@ -762,6 +774,7 @@ def index_scope(scope: KnowledgeScope, rebuild: bool = False) -> dict[str, Any]:
                 json.dumps({"failures": failures}, ensure_ascii=False),
             ),
         )
+        identities.save()
         connection.commit()
         return {
             "scope": scope.as_dict(),
@@ -792,6 +805,7 @@ def document_from_row(row: sqlite3.Row) -> dict[str, Any]:
         "confidence": row["confidence"],
         "tags": decode_json_list(row["tags_json"]),
         "sources": decode_json_list(row["source_refs_json"]),
+        "metadata": json.loads(row["metadata_json"]),
         "contentHash": row["content_hash"],
         "indexedAt": row["indexed_at"],
         "error": row["error"],
@@ -846,7 +860,7 @@ def scope_status(scope: KnowledgeScope) -> dict[str, Any]:
 
 
 def search_terms(query: str) -> list[str]:
-    terms = re.findall(r"[\w\-]+", query.lower(), flags=re.UNICODE)
+    terms = re.findall(r"[\w\-]+(?:\+{1,2}|#)?", query.lower(), flags=re.UNICODE)
     return list(dict.fromkeys(term for term in terms if term))
 
 
@@ -856,6 +870,19 @@ def fts_query(query: str) -> str | None:
         return None
     escaped = [term.replace('"', '""') for term in terms]
     return " AND ".join(f'"{term}"' for term in escaped)
+
+
+def matches_terms(text: str, query: str) -> bool:
+    haystack = text.casefold()
+    for term in search_terms(query):
+        # Trigram FTS does not index short tokens. Latin biomedical initials
+        # must match words, not arbitrary letters inside an unrelated word.
+        if len(term) < 3 and term.isascii():
+            if re.search(r'(?<!\w)' + re.escape(term) + r'(?!\w)', haystack) is None:
+                return False
+        elif term.casefold() not in haystack:
+            return False
+    return bool(search_terms(query))
 
 
 def search_one_scope(
@@ -882,6 +909,7 @@ def search_one_scope(
         status_clauses.append("AND d.status != 'draft'")
     status_clause = "\n".join(status_clauses)
     match_query = fts_query(query)
+    connection.create_function('knowledge_matches', 2, matches_terms, deterministic=True)
     try:
         if match_query:
             rows = connection.execute(
@@ -895,15 +923,15 @@ def search_one_scope(
                   AND d.scope_id = ?
                   AND d.category IN ({placeholders})
                   AND d.error IS NULL
+                  AND knowledge_matches(c.text || ' ' || c.title || ' ' || c.tags, ?)
                   {status_clause}
                 ORDER BY fts_rank ASC
                 LIMIT ?
                 """,
-                [match_query, scope.scope_id, *categories, limit * 4],
+                [match_query, scope.scope_id, *categories, query, limit * 4],
             ).fetchall()
         else:
-            needle = f"%{query.lower()}%"
-            parameters = [scope.scope_id, *categories, needle, needle, needle, limit * 4]
+            parameters = [scope.scope_id, *categories, query, limit * 4]
             rows = connection.execute(
                 f"""
                 SELECT d.*, c.id AS chunk_id, c.locator, c.heading, c.page_number,
@@ -914,7 +942,7 @@ def search_one_scope(
                   AND d.category IN ({placeholders})
                   AND d.error IS NULL
                   {status_clause}
-                  AND (lower(c.text) LIKE ? OR lower(c.title) LIKE ? OR lower(c.tags) LIKE ?)
+                  AND knowledge_matches(c.text || ' ' || c.title || ' ' || c.tags, ?)
                 LIMIT ?
                 """,
                 parameters,
@@ -1018,6 +1046,7 @@ def get_document(scope: KnowledgeScope, document_id: str) -> dict[str, Any]:
         ).fetchall()
         return {
             "document": document_from_row(row),
+            "resolvedSources": resolve_source_references(scope, connection, decode_json_list(row['source_refs_json'])),
             "chunks": [
                 {
                     "id": chunk["id"],
@@ -1033,6 +1062,32 @@ def get_document(scope: KnowledgeScope, document_id: str) -> dict[str, Any]:
         }
     finally:
         connection.close()
+
+
+def resolve_source_references(scope: KnowledgeScope, connection: sqlite3.Connection, references: list) -> list[dict]:
+    results = []
+    global_connection = None
+    try:
+        for reference in references:
+            if not isinstance(reference, dict):
+                continue
+            source_id = reference.get('source_id')
+            if not source_id:
+                results.append({**reference, 'resolution': 'external' if reference.get('url') else 'unlinked'})
+                continue
+            row = connection.execute('SELECT * FROM documents WHERE id = ?', (source_id,)).fetchone()
+            if row is None and scope.kind == 'project':
+                if global_connection is None:
+                    global_scope = KnowledgeScope.from_request({'kind': 'global'}, str(scope.pi_root))
+                    global_connection = connect_scope(global_scope, create=False)
+                if global_connection is not None:
+                    row = global_connection.execute('SELECT * FROM documents WHERE id = ?', (source_id,)).fetchone()
+            results.append({**reference, 'resolution': 'found' if row is not None else 'missing',
+                            'document': document_from_row(row) if row is not None else None})
+        return results
+    finally:
+        if global_connection is not None:
+            global_connection.close()
 
 
 def markdown_record(metadata: dict[str, Any], content: str) -> str:

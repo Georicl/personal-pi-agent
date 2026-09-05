@@ -17,6 +17,7 @@ trap cleanup EXIT
 
 for required in \
   "$runtime_root/knowledge_core.py" \
+  "$runtime_root/source_identity.py" \
   "$runtime_root/schema.sql" \
   "$runtime_root/pyproject.toml" \
   "$runtime_root/uv.lock" \
