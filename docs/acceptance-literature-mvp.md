@@ -1,6 +1,7 @@
 # Merged-main and Literature MVP acceptance
 
 Date: 2026-09-06 (Asia/Shanghai).
+UI automation follow-up: 2026-09-08 (Asia/Shanghai).
 Merged baseline: `e1db632` (PR #25). Development branch: `codex/literature-mvp`.
 
 ## Merged-main acceptance
@@ -46,14 +47,20 @@ before content verification. Success was not inferred solely from the GUI label.
 - Strict release compilation, Xcode app build and ad-hoc signature verification
   passed. Existing Knowledge Core (33 tests), Knowledge and Figure plugin checks
   passed. Test environments are kept outside bundled resource directories.
+- After the user completed macOS `Enable UI Automation` authentication on
+  2026-09-08, `testLiteratureNavigationAndEditableConditions` executed and passed:
+  one XCUITest, zero failures, 19.380 seconds. It checks Chinese navigation,
+  editable query input, invalid-year feedback and absence of a save action before
+  results exist. Tested application/test code: `b47dfe2`, Xcode 26.6, ad-hoc signing.
+  Local result bundle: `.build/literature-uitest/Logs/Test/Test-PersonalPi-2026.09.08_20-52-23-+0800.xcresult`.
 
 ## Explicit limitations
 
-- The new XCUITest navigation case compiles. On this host its unsigned runner
-  exited before bootstrap; an ad-hoc-signed retry reached the runner but timed
-  out enabling macOS automation. **The XCUITest case did not execute and is not
-  counted as passed.** Manual native GUI acceptance above was completed through
-  the available computer-use interface. No system permission was changed.
+- Earlier XCUITest attempts stopped at bootstrap or macOS authentication. The
+  authentication blocker was resolved by the user's system authorization; the
+  selected Literature navigation case passed as recorded above. This follow-up
+  does not claim that the entire XCUITest suite was run. The broader workflows
+  retain the separate native/manual GUI acceptance evidence above.
 - No paid LLM request was made. Actual native tools and GUI/bridge paths were
   exercised, but quality of a model's query translation or synthesis remains
   subject to the user's review. The UI discloses use of the current session/model.
