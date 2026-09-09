@@ -232,9 +232,12 @@ struct ArtifactReviewAttachment: Identifiable, Sendable {
             comment: comment, selectedText: text.substring(with: range), utf16Location: range.location, utf16Length: range.length))
     }
 
-    static func figure(_ artifact: FigureArtifact, region: ReviewRegion, comment: String) throws -> Self {
+    static func figure(_ artifact: FigureArtifact, region: ReviewRegion, comment: String, expectedPreviewHash: String? = nil) throws -> Self {
         guard region.isValid else { throw WorkbenchError.message("Select an image region first") }
         let data = try Data(contentsOf: artifact.previewURL)
+        if let expectedPreviewHash, hash(data) != expectedPreviewHash {
+            throw WorkbenchError.message("The image changed after preview; reopen it before adding a comment")
+        }
         guard data.count <= 32 * 1024 * 1024,
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [

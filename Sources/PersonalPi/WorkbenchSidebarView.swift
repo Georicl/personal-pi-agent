@@ -231,6 +231,7 @@ struct FigureReviewPreview: View {
     let artifact: FigureArtifact
     let onReview: (ArtifactReviewAttachment) -> Void
     @State private var image: NSImage?
+    @State private var previewHash: String?
     @State private var region: ReviewRegion?
     @State private var comment = ""
     @State private var error = ""
@@ -262,10 +263,11 @@ struct FigureReviewPreview: View {
                 Button("Add selection to chat") {
                     guard let region else { return }
                     let comment = comment
+                    let previewHash = previewHash
                     preparing = true
                     Task {
                         let result = await Task.detached(priority: .utility) {
-                            Result { try ArtifactReviewAttachment.figure(artifact, region: region, comment: comment) }
+                            Result { try ArtifactReviewAttachment.figure(artifact, region: region, comment: comment, expectedPreviewHash: previewHash) }
                         }.value
                         preparing = false
                         switch result {
@@ -281,10 +283,11 @@ struct FigureReviewPreview: View {
             if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
         }
         .task(id: artifact.id) {
-            image = nil; region = nil; comment = ""; error = ""
+            image = nil; previewHash = nil; region = nil; comment = ""; error = ""
             let data = await Task.detached(priority: .utility) { try? Data(contentsOf: artifact.previewURL) }.value
             guard !Task.isCancelled else { return }
             image = data.flatMap(NSImage.init(data:))
+            previewHash = data.map(ArtifactReviewAttachment.hash)
             if image == nil { error = "Preview file is unavailable" }
         }
     }

@@ -116,6 +116,9 @@ struct WorkbenchTests {
             sessionId:nil,cwd:a.path,createdAt:Date(),previewPath:preview.path,files:[.init(format:.png,path:preview.path)],
             widthMm:100,heightMm:50,dpi:300,validation:.init(passed:true,score:100,errors:[],warnings:[],checks:[]),intermediatesRetained:false)
         let review = try ArtifactReviewAttachment.figure(figure,region:.init(x:0.1,y:0.2,width:0.5,height:0.6),comment:"Move legend")
+        #expect(throws: (any Error).self) {
+            try ArtifactReviewAttachment.figure(figure, region: .init(x:0,y:0,width:1,height:1), comment:"Stale preview", expectedPreviewHash:"outdated")
+        }
         let attachedImage = try #require(review.image)
         let png = try #require(Data(base64Encoded:attachedImage.data))
         #expect(CGImageSourceCreateWithData(png as CFData,nil) != nil)
