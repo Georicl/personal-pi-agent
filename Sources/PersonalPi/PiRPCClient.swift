@@ -11,6 +11,7 @@ struct PiStreamEvent: Sendable {
     let toolIsError: Bool?
     let usage: SessionUsage?
     let figureArtifact: FigureArtifact?
+    var textArtifact: TextArtifact? = nil
 }
 
 struct PiSessionState: Sendable {
@@ -125,6 +126,7 @@ struct PiModelOption: Identifiable, Sendable, Hashable {
     let name: String
     let reasoning: Bool
     let supportedThinkingLevels: [String]
+    var supportsImages: Bool = false
 
     var identity: String { "\(provider)/\(modelId)" }
     var displayName: String { name.isEmpty ? identity : name }
@@ -157,7 +159,8 @@ struct PiModelOption: Identifiable, Sendable, Hashable {
             supportedThinkingLevels: thinkingLevels(
                 reasoning: reasoning,
                 thinkingLevelMap: object["thinkingLevelMap"] as? [String: Any]
-            )
+            ),
+            supportsImages: (object["input"] as? [String])?.contains("image") == true
         )
     }
 }
@@ -310,8 +313,12 @@ final class PiRPCClient: NSObject {
         }
     }
 
-    func sendPrompt(_ message: String, completion: @escaping (Bool, String?) -> Void = { _, _ in }) {
-        request(type: "prompt", fields: ["message": message], timeout: 600) { response in
+    func sendPrompt(_ message: String, images: [PiPromptImage] = [], completion: @escaping (Bool, String?) -> Void = { _, _ in }) {
+        var fields: [String: Any] = ["message": message]
+        if !images.isEmpty {
+            fields["images"] = images.map { ["type": $0.type, "data": $0.data, "mimeType": $0.mimeType] }
+        }
+        request(type: "prompt", fields: fields, timeout: 600) { response in
             completion(Self.responseSucceeded(response), response["error"] as? String)
         }
     }
@@ -768,6 +775,7 @@ final class PiRPCClient: NSObject {
         var toolIsError: Bool?
         var role: String?
         var figureArtifact: FigureArtifact?
+        var textArtifact: TextArtifact?
 
         if let assistantEvent = object["assistantMessageEvent"] as? [String: Any] {
             let assistantEventType = assistantEvent["type"] as? String
@@ -811,6 +819,7 @@ final class PiRPCClient: NSObject {
                 toolDetail = parseContent(result["content"])
                 if let details = result["details"] as? [String: Any] {
                     figureArtifact = FigureArtifact.decode(details["personalPiFigureArtifact"])
+                    textArtifact = TextArtifact.decode(details["personalPiTextArtifact"])
                 }
             }
         }
@@ -825,7 +834,8 @@ final class PiRPCClient: NSObject {
             toolDetail: toolDetail,
             toolIsError: toolIsError,
             usage: parseUsage(object["usage"]),
-            figureArtifact: figureArtifact
+            figureArtifact: figureArtifact,
+            textArtifact: textArtifact
         )
     }
 
@@ -848,7 +858,8 @@ final class PiRPCClient: NSObject {
         guard let role = message["role"] as? String else { return nil }
         let text = parseContent(message["content"]) ?? ""
         guard !text.isEmpty else { return nil }
-        return PiChatMessage(id: object["id"] as? String ?? UUID().uuidString, role: role, text: text, isStreaming: false)
+        return PiChatMessage(id: object["id"] as? String ?? UUID().uuidString, role: role,
+            text: role == "user" ? ArtifactReviewAttachment.displayMessage(text) : text, isStreaming: false)
     }
 
     nonisolated private static func parseContent(_ value: Any?) -> String? {

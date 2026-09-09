@@ -1,5 +1,6 @@
 import CoreGraphics
 import ImageIO
+import CryptoKit
 import XCTest
 
 final class PersonalPiUITests: XCTestCase {
@@ -71,7 +72,7 @@ final class PersonalPiUITests: XCTestCase {
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         let sidebar = app.descendants(matching: .any)["figure-artifact-sidebar"].firstMatch
         XCTAssertTrue(sidebar.waitForExistence(timeout: 4))
-        XCTAssertTrue(app.descendants(matching: .any)["figure-artifact-image"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["figure-review-canvas"].exists)
         XCTAssertTrue(app.buttons["export-figure-button"].exists)
 
         let resizeHandle = app.descendants(matching: .any)["figure-artifact-sidebar-resize-handle"].firstMatch
@@ -282,6 +283,72 @@ final class PersonalPiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["运行标识、存储位置与当前用量"].exists)
         XCTAssertTrue(app.staticTexts["名称"].exists)
         XCTAssertTrue(app.staticTexts["尚未持久化"].exists)
+    }
+
+    @MainActor
+    func testTextSelectionReviewAndVersionComparison() throws {
+        try prepareTextArtifacts()
+        let app = launchApp(language: "en")
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        app.buttons["figure-artifact-sidebar-toggle"].click()
+        let source = app.textViews["review-selectable-text"].firstMatch
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        source.click()
+        source.typeKey("a", modifierFlags: .command)
+        let comment = app.textFields["text-review-comment"]
+        comment.click()
+        comment.typeText("Clarify the sample size.")
+        let addButton = app.buttons["add-text-review"]
+        XCTAssertTrue(addButton.isEnabled)
+        addButton.click()
+        XCTAssertTrue(app.descendants(matching: .any)["review-attachment"].firstMatch.waitForExistence(timeout: 3))
+        app.checkBoxes["Compare with previous version"].click()
+        XCTAssertTrue(app.descendants(matching: .any)["text-version-comparison"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Workbench text review and comparison"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.buttons["remove-review-comment"].click()
+        XCTAssertFalse(app.descendants(matching: .any)["review-attachment"].exists)
+    }
+
+    @MainActor
+    func testFigureRegionReviewToChat() throws {
+        try prepareFigureArtifact()
+        let app = launchApp(language: "en")
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8))
+        app.buttons["figure-artifact-sidebar-toggle"].click()
+        let canvas = app.descendants(matching: .any)["figure-review-canvas"].firstMatch
+        XCTAssertTrue(canvas.waitForExistence(timeout: 5))
+        canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.15))
+            .press(forDuration: 0.1, thenDragTo: canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.8)))
+        let comment = app.textFields["figure-review-comment"]
+        comment.click()
+        comment.typeText("Move the legend outside this region.")
+        XCTAssertTrue(app.buttons["add-figure-review"].isEnabled)
+        app.buttons["add-figure-review"].click()
+        XCTAssertTrue(app.descendants(matching: .any)["review-attachment"].firstMatch.waitForExistence(timeout: 4))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Workbench figure region review"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    private func prepareTextArtifacts() throws {
+        let cwd = dataRoot.appendingPathComponent("chat")
+        for version in 1...2 {
+            let directory = cwd.appendingPathComponent(".pi/artifacts/texts/report/v\(String(format: "%06d", version))")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let content = version == 1 ? "# Results\nTwelve samples were examined.\n" : "# Results\nWe examined twelve independent samples.\n"
+            let path = directory.appendingPathComponent("document.md")
+            try content.write(to: path, atomically: true, encoding: .utf8)
+            let hash = SHA256.hash(data: Data(content.utf8)).map { String(format: "%02x", $0) }.joined()
+            let artifact: [String: Any] = ["schemaVersion":1,"kind":"text","id":"report-v\(version)","artifactId":"report",
+                "version":version,"parentVersion":version == 1 ? NSNull() : 1,"title":"Research results", "cwd":cwd.path,
+                "sessionId":NSNull(),"createdAt":"2026-09-09T00:00:0\(version)Z","sourcePath":path.path,
+                "contentHash":hash,"sources":["fixture evidence"]]
+            try JSONSerialization.data(withJSONObject: artifact).write(to: directory.appendingPathComponent("artifact.json"))
+        }
     }
 
     @MainActor

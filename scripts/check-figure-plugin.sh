@@ -75,6 +75,7 @@ PY
 
 UV_PROJECT_ENVIRONMENT="$managed_environment/.venv" uv run --quiet --project "$runtime_root" --locked python - "$runtime_root/runner.py" "$test_root" <<'PY'
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -119,6 +120,38 @@ except runner.FigureRequestError:
     pass
 else:
     raise AssertionError("The five-iteration limit was not enforced")
+
+# New user feedback starts a bounded cycle without losing the figure series.
+assert runner.next_iteration(limit_root, None, 5, "review-a") == 6
+for version in range(6, 11):
+    directory = limit_root / f"v{version:03d}"
+    directory.mkdir()
+    (directory / "revision.json").write_text(json.dumps({"reviewId":"review-a","reviewBaseVersion":5}))
+try:
+    runner.next_iteration(limit_root, None, 5, "review-a")
+except runner.FigureRequestError:
+    pass
+else:
+    raise AssertionError("Review cycle exceeded five attempts")
+try:
+    runner.next_iteration(limit_root, None, 5, "competing-review")
+except runner.FigureRequestError:
+    pass
+else:
+    raise AssertionError("Stale figure review was accepted")
+assert runner.next_iteration(limit_root, None, 10, "review-b") == 11
+
+request = {"cwd":str(root),"artifactRoot":str(root / "review-artifacts"),"figureId":"review-example",
+           "code":"fig, ax = plt.subplots(); ax.bar(['A','B'],[1,2],color='blue'); fig.tight_layout()"}
+first = runner.render(request)["artifact"]
+original = Path(first["previewPath"]).read_bytes()
+second = runner.render({**request,"reviewBaseVersion":1,"reviewId":"user-comment",
+                       "code":request["code"].replace("'blue'","'red'")})["artifact"]
+assert first["validation"]["passed"] and second["validation"]["passed"]
+assert second["version"] == 2
+assert Path(first["previewPath"]).read_bytes() == original
+assert Path(second["previewPath"]).read_bytes() != original
+assert json.loads(Path(second["revisionPath"]).read_text())["reviewId"] == "user-comment"
 
 failed_root = root / "failed-artifacts"
 try:
@@ -172,7 +205,10 @@ assert artifact["intermediatesRetained"] is False
 assert {item["format"] for item in artifact["files"]} == {"png", "tiff", "pdf"}
 
 version_dir = Path(artifact["previewPath"]).parent
-assert {path.name for path in version_dir.iterdir()} == {"figure.png", "figure.tiff", "figure.pdf"}
+assert {path.name for path in version_dir.iterdir()} == {"figure.png", "figure.tiff", "figure.pdf", "revision.json"}
+recipe = json.loads((version_dir / "revision.json").read_text())
+assert recipe["figureId"] == artifact["figureId"]
+assert "code" in recipe and recipe["dataPaths"]
 with Image.open(version_dir / "figure.png") as image:
     assert abs(image.width - 2480) <= 2, image.size
     assert abs(image.height - 877) <= 2, image.size
