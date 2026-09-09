@@ -87,7 +87,7 @@ for line in sys.stdin:
     elif kind == "prompt":
         text = request["message"]
         with (root / "prompts.jsonl").open("a") as stream:
-            stream.write(json.dumps({"cwd": cwd, "text": text}) + "\n")
+            stream.write(json.dumps({"cwd": cwd, "text": text, "images": request.get("images", [])}) + "\n")
         if text == "/notify":
             emit({"type": "extension_ui_request", "id": "notice", "method": "notify", "message": "Status available"})
         elif text == "/ask":

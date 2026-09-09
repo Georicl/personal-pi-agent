@@ -561,3 +561,37 @@
 "Index knowledge before searching" = "请先建立知识库索引，再进行搜索";
 "Knowledge runtime returned an invalid response" = "知识库运行环境返回了无效数据";
 "Unable to read knowledge folder" = "无法读取知识库文件夹";
+
+"Research outputs" = "研究产物";
+
+"Import Markdown or text" = "导入 Markdown 或文本";
+
+"Close preview" = "关闭预览";
+
+"Output type" = "产物类型";
+
+"Text" = "文本";
+
+"Document version" = "文档版本";
+
+"Rendered preview" = "渲染预览";
+
+"Export text…" = "导出文本…";
+
+"Switch off rendered preview to select exact source text for review." = "关闭渲染预览后，可选中原文添加批注。";
+
+"Compare with previous version" = "与上一版本比较";
+
+"− Previous · + Current" = "− 上一版本 · + 当前版本";
+
+"Describe the revision…" = "描述修改要求…";
+
+"Add selection to chat" = "将选区加入聊天";
+
+"Import a Markdown/TXT file, or ask Pi to create a research text with /workbench." = "导入 Markdown/TXT 文件，或通过 /workbench 让 Pi 创建研究文本。";
+
+"Drag to select a region, then describe the change." = "拖动框选图片区域，然后填写修改要求。";
+
+"Remove review comment" = "移除批注";
+
+"Previous version: v%lld" = "上一版本：v%lld";

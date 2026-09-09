@@ -163,7 +163,9 @@ Global Chat 使用 `~/.pi/chat/.pi/artifacts/figures/`。GUI 为了跨页面和�
 ~/.pi/agent/personal-pi-figure-artifacts.json
 ~~~
 
-默认版本目录只有图片。`source.py`、`request.json`、`validation.json` 和 `runtime.log` 在成功或失败后都会清理；只有用户明确要求，或 Settings 中明确启用 `figure.keepWorkFiles`，才保留这些工作文件。
+默认版本目录保留图片和最小编辑配方 `revision.json`（绘图代码、参数、输入路径），供右侧批注后的定向修订使用。`source.py`、`request.json`、`validation.json` 和 `runtime.log` 仍只在用户明确要求，或 Settings 中启用 `figure.keepWorkFiles` 时保留。
+
+首次生成最多自动尝试 5 次。用户对最新版本提交新批注后，工具通过 `reviewBaseVersion` 和 `reviewId` 开始新一轮，最多再自动尝试 5 次；不同批注使用过期基线时会报冲突。总版本数可以超过 5，不会覆盖旧版本。
 
 ## 9. GUI 交互
 

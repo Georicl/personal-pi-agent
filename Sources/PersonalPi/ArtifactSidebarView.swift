@@ -5,12 +5,14 @@ import UniformTypeIdentifiers
 struct ArtifactSidebarView: View {
     @Binding var isVisible: Bool
     @ObservedObject var store: FigureArtifactStore
+    var onReview: ((ArtifactReviewAttachment) -> Void)? = nil
+    var showsHeader = true
     @State private var showingExport = false
+    @State private var comparing = false
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Hairline()
+            if showsHeader { header; Hairline() }
             if let artifact = store.selectedArtifact {
                 ScrollView(showsIndicators: false) {
                     artifactContent(artifact)
@@ -92,6 +94,14 @@ struct ArtifactSidebarView: View {
 
             preview(artifact)
 
+            if let previous = store.versions(for: artifact).first(where: { $0.version < artifact.version }) {
+                Toggle("Compare with previous version", isOn: $comparing).toggleStyle(.checkbox)
+                if comparing {
+                    Text("Previous version: v\(previous.version)").font(.caption)
+                    ArtifactPreviewImage(url: previous.previewURL)
+                }
+            }
+
             if store.versions(for: artifact).count > 1 {
                 versionPicker(artifact)
             }
@@ -119,7 +129,11 @@ struct ArtifactSidebarView: View {
 
     @ViewBuilder
     private func preview(_ artifact: FigureArtifact) -> some View {
-        ArtifactPreviewImage(url: artifact.previewURL)
+        if let onReview {
+            FigureReviewPreview(artifact: artifact, onReview: onReview).id(artifact.id)
+        } else {
+            ArtifactPreviewImage(url: artifact.previewURL)
+        }
     }
 
     private func versionPicker(_ artifact: FigureArtifact) -> some View {

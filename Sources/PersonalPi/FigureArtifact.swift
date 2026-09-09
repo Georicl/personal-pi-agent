@@ -59,6 +59,7 @@ struct FigureArtifact: Codable, Hashable, Sendable, Identifiable {
     let dpi: Int
     let validation: FigureValidation
     let intermediatesRetained: Bool
+    var revisionPath: String? = nil
 
     var previewURL: URL { URL(fileURLWithPath: previewPath) }
 
@@ -131,7 +132,6 @@ final class FigureArtifactStore: ObservableObject {
             .filter {
                 $0.figureId == artifact.figureId
                     && $0.cwd == artifact.cwd
-                    && $0.sessionId == artifact.sessionId
             }
             .sorted { $0.version > $1.version }
     }

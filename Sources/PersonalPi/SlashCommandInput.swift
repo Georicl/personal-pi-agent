@@ -33,6 +33,29 @@ struct SlashCommandInput: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            ForEach(appState.reviewAttachments) { attachment in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: attachment.reference.kind == "text" ? "text.quote" : "viewfinder")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(attachment.reference.title) · v\(attachment.reference.version)").font(.caption.bold())
+                        if let quote = attachment.reference.selectedText {
+                            Text(quote).font(.caption).lineLimit(2).foregroundStyle(.secondary)
+                        }
+                        Text(attachment.reference.comment).font(.caption).lineLimit(3)
+                    }
+                    Spacer()
+                    Button {
+                        appState.reviewAttachments.removeAll { $0.id == attachment.id }
+                    } label: { Image(systemName: "xmark.circle") }
+                    .buttonStyle(.plain)
+                    .help("Remove review comment")
+                    .accessibilityIdentifier("remove-review-comment")
+                }
+                .padding(8)
+                .background(Theme.panel, in: RoundedRectangle(cornerRadius: 6))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("review-attachment")
+            }
             if !matchingCommands.isEmpty {
                 SlashCommandPalette(
                     commands: matchingCommands,
@@ -62,6 +85,7 @@ struct SlashCommandInput: View {
                 }
                 .buttonStyle(.plain)
                 .help("Send")
+                .disabled(appState.isPreparingReview)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 11)

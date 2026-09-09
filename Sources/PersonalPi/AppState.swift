@@ -225,6 +225,8 @@ final class AppState: ObservableObject {
     @Published var currentProject = ""
     @Published var currentProjectPath = ""
     @Published var composerText = ""
+    @Published var reviewAttachments: [ArtifactReviewAttachment] = []
+    @Published private(set) var isPreparingReview = false
     var isPiRunning: Bool {
         get { sessionCoordinator.isConnected }
         set { sessionCoordinator.isConnected = newValue }
@@ -263,6 +265,7 @@ final class AppState: ObservableObject {
     private struct PendingPrompt {
         let text: String
         let directory: String
+        var attachments: [ArtifactReviewAttachment] = []
     }
     private var pendingPrompt: PendingPrompt?
     private var pendingNewSession = false
@@ -277,6 +280,7 @@ final class AppState: ObservableObject {
     private(set) var isSessionTransitioning = false
     private var transitionEvents: [PiStreamEvent] = []
     private var draftsByDirectory: [String: String] = [:]
+    private var reviewsByDirectory: [String: [ArtifactReviewAttachment]] = [:]
     private var runRevision = UUID()
     private var commandRevision: UUID?
     private var reconciliationRevision = UUID()
@@ -292,6 +296,7 @@ final class AppState: ObservableObject {
     let usageStore = AccountUsageStore()
     let taskStore: PiTaskStore
     let figureArtifactStore: FigureArtifactStore
+    let workbenchStore = WorkbenchStore()
     let knowledgeStore: KnowledgeLibraryStore
     let piRootDirectory: String
     let globalChatDirectory: String
@@ -410,7 +415,14 @@ final class AppState: ObservableObject {
                     for event in startupEvents { self.handle(event) }
                 }
             }
-            if !success { self.agentStatus = message }
+            if !success {
+                self.agentStatus = message
+                if let pending = self.pendingPrompt, !pending.attachments.isEmpty {
+                    self.reviewAttachments = pending.attachments + self.reviewAttachments
+                    if self.composerText.isEmpty { self.composerText = pending.text }
+                    self.pendingPrompt = nil
+                }
+            }
             if success {
                 self.startupSession = nil
                 self.sessionModel = self.piClient.configuredModelLabel(for: self.activeWorkingDirectory) ?? self.sessionModel
@@ -430,7 +442,7 @@ final class AppState: ObservableObject {
                 } else if let pendingPrompt = self.pendingPrompt {
                     self.pendingPrompt = nil
                     if pendingPrompt.directory == Self.canonicalDirectory(self.activeWorkingDirectory) {
-                        self.send(text: pendingPrompt.text)
+                        self.send(text: pendingPrompt.text, attachments: pendingPrompt.attachments)
                     }
                 }
             }
@@ -438,11 +450,16 @@ final class AppState: ObservableObject {
     }
 
     func sendPrompt() {
+        guard !isPreparingReview else { return }
         guard !isSessionTransitioning, pendingSession == nil, !pendingNewSession else {
             agentStatus = "Wait for the session change before sending"
             return
         }
         let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !reviewAttachments.isEmpty {
+            sendReview(text: text)
+            return
+        }
         guard !text.isEmpty else { return }
         let draft = composerText
         composerText = ""
@@ -460,6 +477,57 @@ final class AppState: ObservableObject {
             connectPi()
         } else {
             send(text: text)
+        }
+    }
+
+    func addReview(_ attachment: ArtifactReviewAttachment) {
+        guard WorkbenchStore.canonical(attachment.reference.cwd) == WorkbenchStore.canonical(activeWorkingDirectory) else {
+            agentStatus = "A review belongs to a different project"
+            return
+        }
+        guard reviewAttachments.count < 8 else { agentStatus = "Send at most eight comments at a time"; return }
+        reviewAttachments.append(attachment)
+    }
+
+    private func sendReview(text: String) {
+        guard !isGenerating, pendingPrompt == nil else {
+            agentStatus = "Wait for the current request or stop it before sending"
+            return
+        }
+        let attachments = reviewAttachments
+        if attachments.contains(where: { $0.image != nil }),
+           let model = availableModels.first(where: { $0.identity == sessionModel }), !model.supportsImages {
+            agentStatus = "Choose an image-capable model to send figure comments"
+            return
+        }
+        let directory = activeWorkingDirectory
+        let revision = sessionRevision
+        isPreparingReview = true
+        Task {
+            let result = await Task.detached(priority: .utility) {
+                Result {
+                    try ArtifactReviewAttachment.validate(attachments, cwd: directory)
+                    return try ArtifactReviewAttachment.message(text, attachments: attachments)
+                }
+            }.value
+            isPreparingReview = false
+            guard sessionRevision == revision,
+                  WorkbenchStore.canonical(activeWorkingDirectory) == WorkbenchStore.canonical(directory),
+                  reviewAttachments.map(\.id) == attachments.map(\.id),
+                  composerText.trimmingCharacters(in: .whitespacesAndNewlines) == text else { return }
+            switch result {
+            case .failure(let error): agentStatus = error.localizedDescription
+            case .success:
+                composerText = ""
+                reviewAttachments = []
+                selectedSection = .sessions
+                if !isPiRunning {
+                    pendingPrompt = PendingPrompt(text: text, directory: Self.canonicalDirectory(directory), attachments: attachments)
+                    connectPi()
+                } else {
+                    send(text: text, attachments: attachments)
+                }
+            }
         }
     }
 
@@ -842,28 +910,36 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func send(text: String) {
+    private func send(text: String, attachments: [ArtifactReviewAttachment] = []) {
+        let modelText: String
+        do { modelText = try ArtifactReviewAttachment.message(text, attachments: attachments) }
+        catch { agentStatus = error.localizedDescription; return }
         runRevision = UUID()
         let request = runRevision
         runCancelled = false
-        lastSubmittedText = text
+        let displayText = ArtifactReviewAttachment.displayMessage(modelText)
+        lastSubmittedText = displayText
         // Slash commands may return without any model turn. Promote to a task
         // only if Pi actually emits agent_start (templates/skills do so too).
-        let mayBeCommand = text.hasPrefix("/")
+        let mayBeCommand = attachments.isEmpty && text.hasPrefix("/")
         commandRevision = mayBeCommand ? request : nil
         reconciliationRevision = UUID()
         if !mayBeCommand { beginModelTask() }
-        messages.append(PiChatMessage(id: UUID().uuidString, role: "user", text: text, isStreaming: false))
+        messages.append(PiChatMessage(id: UUID().uuidString, role: "user", text: displayText, isStreaming: false))
         activities = []
         sessionCoordinator.receive("command_start")
         agentStatus = mayBeCommand ? "Executing command…" : "Thinking…"
         let revision = connectionRevision
-        piClient.sendPrompt(text) { [weak self] accepted, error in
+        piClient.sendPrompt(modelText, images: attachments.compactMap(\.image)) { [weak self] accepted, error in
             guard let self, self.connectionRevision == revision, self.runRevision == request else { return }
             guard accepted else {
                 self.sessionCoordinator.receive("command_finished")
                 self.agentStatus = error ?? "Prompt rejected"
                 self.finishModelTask(detail: self.agentStatus)
+                if !attachments.isEmpty {
+                    self.reviewAttachments = attachments + self.reviewAttachments
+                    if self.composerText.isEmpty { self.composerText = text }
+                }
                 return
             }
             if mayBeCommand { self.reconcileCommandCompletion(request: request) }
@@ -1252,6 +1328,7 @@ final class AppState: ObservableObject {
         currentProject = workspace.name
         currentProjectPath = workspace.path
         composerText = draftsByDirectory[Self.canonicalDirectory(workspace.path)] ?? ""
+        reviewAttachments = reviewsByDirectory[Self.canonicalDirectory(workspace.path)] ?? []
         configureKnowledge()
         sessionProjectFilter = nil
         figureArtifactStore.selectLatest(sessionId: nil, cwd: selectedWorkspace.path)
@@ -1266,6 +1343,7 @@ final class AppState: ObservableObject {
         currentProject = "Global Chat"
         currentProjectPath = globalChatDirectory
         composerText = draftsByDirectory[Self.canonicalDirectory(globalChatDirectory)] ?? ""
+        reviewAttachments = reviewsByDirectory[Self.canonicalDirectory(globalChatDirectory)] ?? []
         configureKnowledge()
         sessionProjectFilter = nil
         figureArtifactStore.selectLatest(sessionId: nil, cwd: globalChatDirectory)
@@ -1337,6 +1415,7 @@ final class AppState: ObservableObject {
     }
 
     func configureKnowledge() {
+        workbenchStore.configure(cwd: activeWorkingDirectory)
         knowledgeStore.configure(projectRoot: workspaceScope == .workspace
             ? URL(fileURLWithPath: workspace.path, isDirectory: true) : nil)
     }
@@ -1400,6 +1479,7 @@ final class AppState: ObservableObject {
     private func preservePendingDraft() {
         let directory = Self.canonicalDirectory(activeWorkingDirectory)
         draftsByDirectory[directory] = pendingPrompt?.text ?? composerText
+        reviewsByDirectory[directory] = pendingPrompt?.attachments ?? reviewAttachments
         pendingPrompt = nil
     }
 
@@ -1428,6 +1508,7 @@ final class AppState: ObservableObject {
         }
         currentProjectPath = directory
         composerText = draftsByDirectory[directory] ?? ""
+        reviewAttachments = reviewsByDirectory[directory] ?? []
         sessionProjectFilter = nil
         availableCommands = Self.nativeCommands
         availableThinkingLevels = ["off"]
@@ -1562,6 +1643,11 @@ final class AppState: ObservableObject {
             agentStatus = "Running \(toolName)…"
             taskStore.update(id: activeTaskId, state: .running, detail: "Running \(toolName)")
         case "tool_execution_end":
+            if event.toolIsError != true, let artifact = event.textArtifact,
+               WorkbenchStore.canonical(artifact.cwd) == WorkbenchStore.canonical(activeWorkingDirectory) {
+                workbenchStore.upsert(artifact)
+                isArtifactSidebarVisible = true
+            }
             let toolName = event.toolName ?? "tool"
             if ["knowledge_capture", "knowledge_publish", "knowledge_index"].contains(toolName) {
                 knowledgeStore.knowledgeChanged()

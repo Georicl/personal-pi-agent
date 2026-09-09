@@ -54,7 +54,7 @@ struct FigureArtifactTests {
         #expect(reloaded.versions(for: artifact).count == 1)
     }
 
-    @Test("Identical figure names remain isolated by project and session")
+    @Test("Identical figure names remain isolated by project")
     @MainActor
     func isolatesFigureSeries() throws {
         let directory = FileManager.default.temporaryDirectory
@@ -74,6 +74,23 @@ struct FigureArtifactTests {
 
         #expect(store.versions(for: first).map(\.id) == [first.id])
         #expect(store.versions(for: second).map(\.id) == [second.id])
+    }
+
+    @Test("A figure revised in another session retains its previous version for comparison")
+    @MainActor
+    func crossSessionRevision() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = try #require(FigureArtifact.decode(manifestObject(previewPath: "/tmp/original.png")))
+        var object = manifestObject(previewPath: "/tmp/revised.png")
+        object["id"] = "revised-v2"
+        object["version"] = 2
+        object["sessionId"] = "another-session"
+        let revised = try #require(FigureArtifact.decode(object))
+        let store = FigureArtifactStore(storageURL: directory.appendingPathComponent("index.json"))
+        store.upsert(first)
+        store.upsert(revised)
+        #expect(store.versions(for: revised).map(\.version) == [2, 1])
     }
 
     @Test("Legacy scientific-figure artifacts remain readable after plugin migration")

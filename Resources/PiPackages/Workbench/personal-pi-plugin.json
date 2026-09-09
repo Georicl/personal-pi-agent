@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "workbench",
+  "displayName": "Research workbench",
+  "command": "workbench",
+  "artifacts": [{ "kind": "text", "schemaVersion": 1, "renderer": "text" }],
+  "settingsNamespace": "workbench",
+  "gui": { "toolbarButton": false, "artifactSidebar": true }
+}

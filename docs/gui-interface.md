@@ -2,6 +2,11 @@
 
 本文档定义当前 macOS GUI 的内部开发接口和扩展边界，供后续功能开发使用。它不是独立发布的 Swift SDK；接口调整必须同步更新调用方、测试和本文档。
 
+研究工作台扩展了共享产物栏：`WorkbenchSidebarView` 组合原 Figure renderer 和文本 renderer；
+`WorkbenchStore` 管理文本版本，`AppState` 管理绑定作用域的批注，`PiRPCClient` 发送文本与 PNG 附件。
+工具结果通过 `personalPiTextArtifact` 注册文本，仍保留原 `personalPiFigureArtifact` 图片接口。
+完整的版本、选区、修订及验收协议见 [Workbench 插件](workbench-plugin.md)。
+
 ## 1. 运行架构
 
 ~~~text

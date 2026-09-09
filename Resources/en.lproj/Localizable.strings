@@ -329,3 +329,37 @@
 "Index knowledge before searching" = "Index knowledge before searching";
 "Knowledge runtime returned an invalid response" = "Knowledge runtime returned an invalid response";
 "Unable to read knowledge folder" = "Unable to read knowledge folder";
+
+"Research outputs" = "Research outputs";
+
+"Import Markdown or text" = "Import Markdown or text";
+
+"Close preview" = "Close preview";
+
+"Output type" = "Output type";
+
+"Text" = "Text";
+
+"Document version" = "Document version";
+
+"Rendered preview" = "Rendered preview";
+
+"Export text…" = "Export text…";
+
+"Switch off rendered preview to select exact source text for review." = "Switch off rendered preview to select exact source text for review.";
+
+"Compare with previous version" = "Compare with previous version";
+
+"− Previous · + Current" = "− Previous · + Current";
+
+"Describe the revision…" = "Describe the revision…";
+
+"Add selection to chat" = "Add selection to chat";
+
+"Import a Markdown/TXT file, or ask Pi to create a research text with /workbench." = "Import a Markdown/TXT file, or ask Pi to create a research text with /workbench.";
+
+"Drag to select a region, then describe the change." = "Drag to select a region, then describe the change.";
+
+"Remove review comment" = "Remove review comment";
+
+"Previous version: v%lld" = "Previous version: v%lld";
