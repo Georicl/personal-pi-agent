@@ -204,6 +204,7 @@ enum KnowledgeCoreClient {
         label: "dev.pi.personal.knowledge-core",
         qos: .userInitiated
     )
+    private static let literatureQueue = DispatchQueue(label: "dev.pi.personal.literature", qos: .userInitiated)
 
     static func inventory(
         scope: KnowledgeLibraryScope,
@@ -339,6 +340,33 @@ enum KnowledgeCoreClient {
         }
     }
 
+    /// Trusted bundled adapter, sharing Knowledge's environment and subprocess
+    /// boundary without exposing a script path to View or model arguments.
+    static func executeLiterature(
+        request: LiteratureRequest,
+        completion: @escaping @Sendable (Result<Data, Error>) -> Void
+    ) {
+        literatureQueue.async {
+            do {
+                let root = URL(fileURLWithPath: request.piRoot)
+                if PersonalPiRuntimeEnvironment.isUITesting {
+                    completion(.success(try Data(contentsOf: root.appendingPathComponent("ui-fixtures/literature-\(request.action).json"))))
+                    return
+                }
+                guard let package = PiLaunchConfiguration.bundledPlugins.first(where: { $0.id == "literature" }) else {
+                    throw KnowledgeCoreClientError.runtimeMissing
+                }
+                let configuration = try makeConfiguration(piRoot: root, workingDirectory: URL(fileURLWithPath: request.cwd))
+                // Environment setup remains serialized with Knowledge, while
+                // remote search must not block local inventory and retrieval.
+                let python = try queue.sync { try prepareEnvironment(configuration) }
+                completion(.success(try runProcess(executable: python,
+                    arguments: [package.rootURL.appendingPathComponent("runtime/literature.py").path],
+                    input: JSONEncoder().encode(request), workingDirectory: configuration.workingDirectory)))
+            } catch { completion(.failure(error)) }
+        }
+    }
+
     private static func makeConfiguration(
         piRoot: URL,
         workingDirectory: URL
@@ -424,6 +452,7 @@ enum KnowledgeCoreClient {
         var environment = PiLaunchConfiguration.processEnvironment()
         extraEnvironment.forEach { environment[$0.key] = $0.value }
         environment["PYTHONUNBUFFERED"] = "1"
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
         let captured = try PiProcessRunner.run(executable: executable, arguments: arguments,
             workingDirectory: workingDirectory, environment: environment, input: input)
         guard captured.status == 0 else {

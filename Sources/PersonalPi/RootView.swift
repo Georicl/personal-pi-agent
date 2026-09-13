@@ -490,6 +490,10 @@ struct DetailView: View {
                         ScrollView(showsIndicators: false) {
                             KnowledgeView(store: appState.knowledgeStore)
                         }
+                    case .literature:
+                        ScrollView(showsIndicators: false) {
+                            LiteratureView(store: appState.literatureStore)
+                        }
                     case .packages:
                         ScrollView(showsIndicators: false) {
                             PackagesView()

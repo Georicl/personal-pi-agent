@@ -57,5 +57,7 @@ jobs:
         run: bash scripts/check-knowledge-plugin.sh
       - name: Figure package
         run: bash scripts/check-figure-plugin.sh
+      - name: Literature package and native tools
+        run: bash scripts/check-literature-plugin.sh
       - name: Workbench versions and native tools
         run: bash scripts/check-workbench-plugin.sh
