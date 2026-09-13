@@ -536,10 +536,7 @@ struct DetailView: View {
                             sidebarDragStartWidth = nil
                         }
                     )
-                    ArtifactSidebarView(
-                        isVisible: $appState.isArtifactSidebarVisible,
-                        store: appState.figureArtifactStore
-                    )
+                    WorkbenchSidebarView(texts: appState.workbenchStore, figures: appState.figureArtifactStore)
                     .frame(width: resolvedArtifactSidebarWidth(in: geometry.size.width))
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                 }

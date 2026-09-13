@@ -595,12 +595,13 @@ export default function figureExtension(pi) {
     name: "figure_render",
     label: "Render figure",
     description:
-      "Execute Python plotting code, validate a figure, produce PNG/TIFF/PDF, and register it for the Personal Pi artifact sidebar. The code must assign the final Matplotlib Figure to fig. Reuse figureId for revisions and stop after iteration five.",
+      "Execute Python plotting code, validate a figure, produce PNG/TIFF/PDF, and register it for the Personal Pi artifact sidebar. The code must assign the final Matplotlib Figure to fig. Reuse figureId for revisions; each user review permits at most five automatic attempts.",
     promptGuidelines: [
       "Inspect each data file before rendering.",
       "Iterate on validation errors with the same figureId, up to five versions.",
       "Do not run inferential statistics before explicit user confirmation.",
       "Keep work files only when the user explicitly asks.",
+      "A minimal revision.json recipe is always retained for editing. For GUI review requests, read that recipe and pass reviewBaseVersion and the reference ID as reviewId. Preserve data and unrelated formatting unless requested.",
     ],
     parameters: Type.Object({
       title: Type.String({ description: "Short human-readable figure title" }),
@@ -614,6 +615,8 @@ export default function figureExtension(pi) {
       figureId: Type.Optional(
         Type.String({ description: "Stable figure ID; reuse it for later iterations" }),
       ),
+      reviewBaseVersion: Type.Optional(Type.Integer({ minimum: 1 })),
+      reviewId: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
       iteration: Type.Optional(
         Type.Integer({ minimum: 1, maximum: MAX_ITERATIONS }),
       ),
@@ -664,6 +667,8 @@ export default function figureExtension(pi) {
             code: params.code,
             dataPaths: params.dataPaths ?? [],
             figureId: params.figureId,
+            reviewBaseVersion: params.reviewBaseVersion,
+            reviewId: params.reviewId,
             iteration: params.iteration,
             widthMm: params.widthMm,
             heightMm: params.heightMm,

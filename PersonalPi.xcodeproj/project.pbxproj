@@ -10,6 +10,9 @@
 		C00000000000000000000010 /* LiteratureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000010 /* LiteratureTests.swift */; };
 		A00000000000000000000028 /* LiteratureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000028 /* LiteratureStore.swift */; };
 		A00000000000000000000029 /* LiteratureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000029 /* LiteratureView.swift */; };
+		C00000000000000000000011 /* WorkbenchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000011 /* WorkbenchTests.swift */; };
+		A00000000000000000000031 /* WorkbenchSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000031 /* WorkbenchSidebarView.swift */; };
+		A00000000000000000000030 /* Workbench.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000030 /* Workbench.swift */; };
 		C00000000000000000000008 /* KnowledgeLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T00000000000000000000008 /* KnowledgeLibraryTests.swift */; };
 		A00000000000000000000022 /* KnowledgeLibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000022 /* KnowledgeLibraryStore.swift */; };
 		A00000000000000000000021 /* KnowledgeCoreClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = S00000000000000000000021 /* KnowledgeCoreClient.swift */; };
@@ -81,6 +84,9 @@
 		T00000000000000000000010 /* LiteratureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteratureTests.swift; sourceTree = "<group>"; };
 		S00000000000000000000028 /* LiteratureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteratureStore.swift; sourceTree = "<group>"; };
 		S00000000000000000000029 /* LiteratureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteratureView.swift; sourceTree = "<group>"; };
+		T00000000000000000000011 /* WorkbenchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkbenchTests.swift; sourceTree = "<group>"; };
+		S00000000000000000000031 /* WorkbenchSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkbenchSidebarView.swift; sourceTree = "<group>"; };
+		S00000000000000000000030 /* Workbench.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workbench.swift; sourceTree = "<group>"; };
 		T00000000000000000000008 /* KnowledgeLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeLibraryTests.swift; sourceTree = "<group>"; };
 		S00000000000000000000022 /* KnowledgeLibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeLibraryStore.swift; sourceTree = "<group>"; };
 		S00000000000000000000021 /* KnowledgeCoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeCoreClient.swift; sourceTree = "<group>"; };
@@ -189,6 +195,8 @@
 				S0000000000000000000000B /* SessionsView.swift */,
 				S00000000000000000000016 /* SessionUtilityView.swift */,
 				S00000000000000000000018 /* FigureArtifact.swift */,
+				S00000000000000000000031 /* WorkbenchSidebarView.swift */,
+				S00000000000000000000030 /* Workbench.swift */,
 				S00000000000000000000019 /* FigureExporter.swift */,
 				S00000000000000000000020 /* PersonalPiPlugin.swift */,
 				S0000000000000000000000C /* SettingsView.swift */,
@@ -229,6 +237,7 @@
 				T00000000000000000000005 /* PackageManagerTests.swift */,
 				T00000000000000000000006 /* SessionCommandTests.swift */,
 				T00000000000000000000007 /* FigureArtifactTests.swift */,
+				T00000000000000000000011 /* WorkbenchTests.swift */,
 				T00000000000000000000009 /* RuntimeServicesTests.swift */,
 				T00000000000000000000008 /* KnowledgeLibraryTests.swift */,
 				T00000000000000000000010 /* LiteratureTests.swift */,
@@ -374,6 +383,8 @@
 				A0000000000000000000000B /* SessionsView.swift in Sources */,
 				A00000000000000000000016 /* SessionUtilityView.swift in Sources */,
 				A00000000000000000000018 /* FigureArtifact.swift in Sources */,
+				A00000000000000000000031 /* WorkbenchSidebarView.swift in Sources */,
+				A00000000000000000000030 /* Workbench.swift in Sources */,
 				A00000000000000000000019 /* FigureExporter.swift in Sources */,
 				A00000000000000000000020 /* PersonalPiPlugin.swift in Sources */,
 				A0000000000000000000000C /* SettingsView.swift in Sources */,
@@ -385,7 +396,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		F30000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000001, C00000000000000000000002, C00000000000000000000003, C00000000000000000000004, C00000000000000000000005, C00000000000000000000006, C00000000000000000000007, C00000000000000000000008, C00000000000000000000009, C00000000000000000000010); runOnlyForDeploymentPostprocessing = 0; };
+		F30000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000001, C00000000000000000000002, C00000000000000000000003, C00000000000000000000004, C00000000000000000000005, C00000000000000000000006, C00000000000000000000007, C00000000000000000000008, C00000000000000000000009, C00000000000000000000010, C00000000000000000000011); runOnlyForDeploymentPostprocessing = 0; };
 		F30000000000000000000003 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (D00000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

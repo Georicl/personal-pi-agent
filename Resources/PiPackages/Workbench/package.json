@@ -1,0 +1,8 @@
+{
+  "name": "@personal-pi/workbench",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Versioned academic text artifacts and targeted review through the existing Pi loop",
+  "keywords": ["pi-package"],
+  "pi": { "extensions": ["extensions"] }
+}

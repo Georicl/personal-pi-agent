@@ -16,8 +16,8 @@ Use this workflow whenever the user asks to create or revise a figure. The expli
 - Treat PDF as vector output when the plotting backend supports it. DPI applies to PNG/TIFF and raster elements, not the PDF page itself.
 - Default size is 210 × 74.25 mm. Width must not exceed 210 mm and height must not exceed 148.5 mm.
 - Default raster resolution is 300 DPI.
-- Keep only generated image files by default. Retain source code, request JSON, logs, or validation files only when the user explicitly asks.
-- Iterate at most five times. If the fifth result still fails, stop and ask the user how to proceed.
+- Keep images and the minimal revision.json editing recipe. Extra source copies, request JSON, logs and validation files require an explicit request.
+- Iterate at most five times per initial request or user review. If the fifth attempt still fails, stop and ask the user how to proceed.
 
 ## Required workflow
 
@@ -61,7 +61,8 @@ ax.set_ylabel("Y measurement")
 ## Iteration behavior
 
 - Reuse figureId across revisions so the GUI groups versions together.
-- Set iteration from 1 through 5.
+- Omit iteration to let the runtime assign the next version. Initial generation permits five versions.
+- For a GUI review, read its recipePath and pass the reviewed version as reviewBaseVersion and the first reference ID for that figure as reviewId. Reuse both for at most five automatic attempts. A new user review may start another cycle from the latest version; a stale review must not be silently rebased.
 - Fix errors before cosmetic warnings.
 - Do not claim success when validation.passed is false.
 - If a warning is scientifically intentional, explain it rather than repeatedly changing the data representation.

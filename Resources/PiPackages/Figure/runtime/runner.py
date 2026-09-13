@@ -521,11 +521,11 @@ def export_images(
     return files, warnings_out
 
 
-def next_iteration(figure_root: Path, requested: Any) -> int:
+def next_iteration(figure_root: Path, requested: Any, review_base: Any = None, review_id: Any = None) -> int:
     existing = []
     if figure_root.is_dir():
         for child in figure_root.iterdir():
-            match = re.fullmatch(r"v(\d{3})", child.name)
+            match = re.fullmatch(r"v(\d{3,})", child.name)
             if match:
                 existing.append(int(match.group(1)))
     inferred = max(existing, default=0) + 1
@@ -537,7 +537,20 @@ def next_iteration(figure_root: Path, requested: Any) -> int:
         except (TypeError, ValueError) as error:
             raise FigureRequestError("iteration must be an integer") from error
         iteration = max(iteration, inferred)
-    if iteration < 1 or iteration > MAX_ITERATIONS:
+    limit = MAX_ITERATIONS
+    if review_base is not None:
+        if not isinstance(review_base, int) or isinstance(review_base, bool) or review_base < 1 or not isinstance(review_id, str) or not review_id.strip():
+            raise FigureRequestError("A review requires its exact base version and review ID")
+        latest = inferred - 1
+        if latest < review_base:
+            raise FigureRequestError("The reviewed figure version does not exist")
+        if latest != review_base:
+            recipe = figure_root / f"v{latest:03d}" / "revision.json"
+            previous = json.loads(recipe.read_text()) if recipe.is_file() else {}
+            if previous.get("reviewId") != review_id or previous.get("reviewBaseVersion") != review_base:
+                raise FigureRequestError("A newer figure exists; preview it before submitting another review")
+        limit = review_base + MAX_ITERATIONS
+    if iteration < 1 or iteration > limit:
         raise FigureRequestError(
             f"Automatic figure revision is limited to {MAX_ITERATIONS} iterations"
         )
@@ -573,7 +586,7 @@ def render(request: dict[str, Any]) -> dict[str, Any]:
     figure_id = sanitize_identifier(request.get("figureId"))
     title = str(request.get("title") or "Figure").strip() or "Figure"
     figure_root = artifact_root / figure_id
-    iteration = next_iteration(figure_root, request.get("iteration"))
+    iteration = next_iteration(figure_root, request.get("iteration"), request.get("reviewBaseVersion"), request.get("reviewId"))
     version_dir = figure_root / f"v{iteration:03d}"
     version_namespace = uuid.uuid5(uuid.NAMESPACE_URL, str(version_dir))
     version_id = f"{figure_id}-v{iteration:03d}-{version_namespace.hex[:12]}"
@@ -659,6 +672,13 @@ def render(request: dict[str, Any]) -> dict[str, Any]:
             shutil.move(str(source), destination)
             output_files.append({"format": output_format, "path": str(destination)})
 
+        # The editable recipe is part of the artifact, not a disposable log.
+        revision_path = version_dir / "revision.json"
+        revision = {key: request.get(key) for key in ["title", "sessionId", "reviewId", "reviewBaseVersion"]}
+        revision.update({"code": code, "dataPaths": [str(path) for path in data_paths],
+                         "widthMm": width_mm, "heightMm": height_mm, "dpi": dpi,
+                         "figureId": figure_id, "version": iteration, "cwd": str(cwd)})
+        revision_path.write_text(json.dumps(revision, ensure_ascii=False, indent=2), encoding="utf-8")
         if keep_work_files:
             (version_dir / "source.py").write_text(code, encoding="utf-8")
             (version_dir / "request.json").write_text(
@@ -693,6 +713,7 @@ def render(request: dict[str, Any]) -> dict[str, Any]:
             "dpi": dpi,
             "validation": validation,
             "intermediatesRetained": keep_work_files,
+            "revisionPath": str(revision_path),
         }
         return {"success": True, "artifact": manifest}
     finally:
